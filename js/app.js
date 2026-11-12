@@ -30,6 +30,7 @@
 
   const DEFAULT_SETTINGS = {
     baseLayer: 'normal',   // 'normal' | 'satellite'
+    toleranceKm: 3,        // 0 (precies goed) | 3 (binnen 3 km)
     minInhabitants: 10000, // 50000 | 10000 | 2500 | 0
     provinces: []          // string[] (empty means all provinces / Heel Nederland)
   };
@@ -70,6 +71,7 @@
     // Settings controls
     settingsLayerNormal: document.querySelector('.segment-btn[data-style="normal"]'),
     settingsLayerSat: document.querySelector('.segment-btn[data-style="satellite"]'),
+    toleranceBtns: document.querySelectorAll('.segment-btn[data-tolerance]'),
     inhabitantsBadge: document.getElementById('inhabitants-badge'),
     presetBtns: document.querySelectorAll('.preset-btn'),
     btnProvAll: document.getElementById('btn-prov-all'),
@@ -121,6 +123,7 @@
         const parsed = JSON.parse(raw);
         return {
           baseLayer: parsed.baseLayer === 'satellite' ? 'satellite' : 'normal',
+          toleranceKm: parsed.toleranceKm === 0 ? 0 : 3,
           minInhabitants: [50000, 10000, 2500, 0].includes(parsed.minInhabitants) ? parsed.minInhabitants : 10000,
           provinces: Array.isArray(parsed.provinces) ? parsed.provinces.filter(p => PROVINCES.includes(p)) : []
         };
@@ -525,6 +528,31 @@
   }
 
   /**
+   * Update tolerance segmented control UI
+   */
+  function updateToleranceUI(val) {
+    if (!el.toleranceBtns) return;
+    el.toleranceBtns.forEach(btn => {
+      const tol = parseInt(btn.getAttribute('data-tolerance'), 10);
+      const isActive = tol === val;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-checked', isActive ? 'true' : 'false');
+    });
+  }
+
+  /**
+   * Change tolerance setting (0 = precies goed, 3 = binnen 3 km)
+   */
+  function setTolerance(val) {
+    if (val !== 0 && val !== 3) return;
+    if (state.settings.toleranceKm === val) return;
+
+    state.settings.toleranceKm = val;
+    saveStoredSettings();
+    updateToleranceUI(val);
+  }
+
+  /**
    * Update active inhabitant preset buttons UI
    */
   function updateInhabitantsPresetUI(val) {
@@ -653,6 +681,7 @@
       state.allFeatures = geojson.features;
 
       renderProvinceCheckboxes();
+      updateToleranceUI(state.settings.toleranceKm);
       updateInhabitantsPresetUI(state.settings.minInhabitants);
       rebuildPoolAndUI();
       nextQuestion();
@@ -769,7 +798,8 @@
     // Compute shortest distance to boundary
     const result = TopoGeometry.getDistanceToGeometry(gokPoint, geometry);
     const distanceKm = result.distanceKm;
-    const isMastered = result.inside || distanceKm <= 3.0;
+    const tolerance = state.settings.toleranceKm;
+    const isMastered = tolerance === 0 ? result.inside : (result.inside || distanceKm <= tolerance);
 
     // Show target polygon on map
     const polyColor = isMastered ? '#16a34a' : '#ea580c';
@@ -784,7 +814,7 @@
       }
     }).addTo(map);
 
-    // If incorrect (> 3km), draw dashed line from Gok to nearest point on polygon boundary
+    // If incorrect, draw dashed line from Gok to nearest point on polygon boundary
     if (!isMastered && result.nearestPoint) {
       const gokLatLng = [state.currentGok[0], state.currentGok[1]];
       const nearestLatLng = [result.nearestPoint[1], result.nearestPoint[0]];
@@ -805,9 +835,9 @@
         interactive: false,
         icon: L.divIcon({
           className: 'dist-label-icon',
-          html: `<span class="distance-pill-tooltip">${distFormatted} km</span>`,
-          iconSize: [80, 24],
-          iconAnchor: [40, 12]
+          html: `<span class="distance-pill-tooltip">${distFormatted} km ernaast</span>`,
+          iconSize: [120, 24],
+          iconAnchor: [60, 12]
         })
       }).addTo(map);
     }
@@ -829,7 +859,7 @@
       if (result.inside || distanceKm === 0) {
         el.feedbackText.textContent = `Raak (0,0 km) · Beheerst`;
       } else {
-        el.feedbackText.textContent = `Goed · ${distStr} km van grens`;
+        el.feedbackText.textContent = `Goed · ${distStr} km ernaast`;
       }
 
       // Mark as mastered and persist in localStorage
@@ -843,7 +873,7 @@
       updateSettingsStatsUI();
     } else {
       el.feedbackBox.className = 'feedback-box incorrect';
-      el.feedbackText.textContent = `${distStr} km van grens`;
+      el.feedbackText.textContent = `${distStr} km ernaast`;
     }
     el.feedbackBox.style.display = 'flex';
     if (el.promptSubRow) el.promptSubRow.hidden = false;
@@ -867,6 +897,16 @@
     // Settings: Kaartstijl segmented buttons
     if (el.settingsLayerNormal) el.settingsLayerNormal.addEventListener('click', () => setBaseLayer('normal'));
     if (el.settingsLayerSat) el.settingsLayerSat.addEventListener('click', () => setBaseLayer('satellite'));
+
+    // Settings: Marge / Tolerantie segmented buttons
+    if (el.toleranceBtns) {
+      el.toleranceBtns.forEach(btn => {
+        btn.addEventListener('click', function () {
+          const tol = parseInt(this.getAttribute('data-tolerance'), 10);
+          setTolerance(tol);
+        });
+      });
+    }
 
     // Top-right quick style buttons
     el.styleNormalBtn.addEventListener('click', () => setBaseLayer('normal'));
