@@ -8,5 +8,9 @@
   "devDependencies": {
     "mapshaper": "^0.7.101"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "leaflet": "^1.9.4",
+    "topojson-client": "^3.1.0"
+  }
 }

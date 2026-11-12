@@ -1,10 +1,110 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="nl">
 <head>
-    <meta charset="UTF-8">
-    <title>67</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Topografie Trainer - maps.meijssen.com</title>
+  <meta name="description" content="Oefen Nederlandse woonplaatsen op een blinde kaart met automatische polygoon- en afstandsberekening.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%22%22><text y=%2226%22 font-size=%2226%22>🗺️</text></svg>">
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="vendor/leaflet.css">
+  <!-- Custom Application Styling -->
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <h1>67</h1>
+  <div id="app-container">
+    <!-- Brand / Title Badge (Top-left) -->
+    <a href="#" class="app-brand" title="Topografie Trainer v1">
+      <span class="app-brand-icon">🗺️</span>
+      <span class="app-brand-title">maps.meijssen.com</span>
+      <span class="app-brand-tag">v1</span>
+    </a>
+
+    <!-- Kaartlaag schakelaar (Top-right) -->
+    <div class="map-style-toggle" role="group" aria-label="Kaartstijl selectie">
+      <button id="style-normal" class="style-btn active" title="Blinde kaart zonder labels">
+        <span>🗺️</span> Normaal
+      </button>
+      <button id="style-sat" class="style-btn" title="Blinde satelliet-luchtfoto zonder labels">
+        <span>🛰️</span> Satelliet
+      </button>
+    </div>
+
+    <!-- Opdrachtbalk (Center top prompt card) -->
+    <div class="top-header-bar">
+      <div class="prompt-card">
+        <!-- Main row: Target name & Action buttons -->
+        <div class="prompt-main-row">
+          <div class="target-container">
+            <div class="target-eyebrow">
+              <span class="pulse-dot"></span>
+              <span>Wijs de woonplaats aan op de kaart:</span>
+            </div>
+            <div class="target-title-wrap">
+              <span id="target-name" class="target-name">Laden...</span>
+              <span id="target-province" class="target-badge">Nederland</span>
+            </div>
+            <div id="target-details" class="target-hint">Even geduld, dataset wordt ingeladen...</div>
+          </div>
+
+          <div class="action-controls">
+            <!-- OK Button (active when pin is placed) -->
+            <button id="btn-ok" class="btn btn-primary" disabled title="Bevestig je gok (Enter)">
+              <span>OK</span>
+              <span class="kbd-shortcut">↵ Enter</span>
+            </button>
+            <!-- Volgende Button (active after feedback) -->
+            <button id="btn-next" class="btn btn-next" style="display: none;" title="Volgende vraag (Spatie / Enter)">
+              <span>Volgende</span>
+              <span class="kbd-shortcut">Spatie</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Secondary row: Progress counter & Feedback indicator -->
+        <div class="prompt-sub-row">
+          <div class="progress-info">
+            <span>Voortgang:</span>
+            <div class="progress-bar-track">
+              <div id="progress-fill" class="progress-bar-fill"></div>
+            </div>
+            <span><strong id="mastered-count">0</strong> / <span id="pool-total">334</span> beheerst</span>
+          </div>
+
+          <!-- Dynamic feedback banner -->
+          <div id="feedback-box" class="feedback-box">
+            <span id="feedback-text"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fullscreen Leaflet Map Viewport -->
+    <div id="map"></div>
+
+    <!-- Completion Celebration Modal -->
+    <div id="completion-modal" class="modal-overlay">
+      <div class="modal-card">
+        <div class="modal-icon">🏆</div>
+        <h2 class="modal-title">Gefeliciteerd!</h2>
+        <p class="modal-text">
+          Je hebt alle woonplaatsen in deze selectie <strong>Beheerst</strong>!
+          Alle gokken vielen binnen de polygoon of binnen de 3 km tolerantiegrens.
+        </p>
+        <button id="btn-restart" class="btn btn-primary">
+          Opnieuw spelen
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Vendor dependencies -->
+  <script src="vendor/leaflet.js"></script>
+  <script src="vendor/topojson-client.min.js"></script>
+  <!-- Geodesic distance & Point-in-polygon math module -->
+  <script src="js/geometry.js"></script>
+  <!-- Main application script -->
+  <script src="js/app.js"></script>
 </body>
 </html>
