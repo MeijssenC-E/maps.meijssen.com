@@ -75,29 +75,130 @@
           </div>
         </section>
 
-        <!-- Minimum Inwoners Section -->
+        <!-- Categorieën & Omvang Section -->
         <section class="settings-section">
           <div class="section-header">
-            <span class="section-label">Minimum inwoners</span>
-            <span id="inhabitants-badge" class="section-badge">334 plaatsen</span>
+            <span class="section-label">Categorieën &amp; Omvang</span>
+            <span id="inhabitants-badge" class="section-badge">334 objecten</span>
           </div>
-          <div class="preset-grid" role="radiogroup" aria-label="Minimum aantal inwoners">
-            <button type="button" class="preset-btn" data-inhabitants="50000" role="radio" aria-checked="false">
-              <span class="preset-title">&gt; 50.000</span>
-              <span class="preset-sub">Grote steden (55)</span>
-            </button>
-            <button type="button" class="preset-btn active" data-inhabitants="10000" role="radio" aria-checked="true">
-              <span class="preset-title">&gt; 10.000</span>
-              <span class="preset-sub">Standaard (334)</span>
-            </button>
-            <button type="button" class="preset-btn" data-inhabitants="2500" role="radio" aria-checked="false">
-              <span class="preset-title">&gt; 2.500</span>
-              <span class="preset-sub">Middelgroot (897)</span>
-            </button>
-            <button type="button" class="preset-btn" data-inhabitants="0" role="radio" aria-checked="false">
-              <span class="preset-title">&gt; 0</span>
-              <span class="preset-sub">Alle plaatsen (2.503)</span>
-            </button>
+          <div class="category-quick-actions">
+            <button type="button" id="btn-cat-all" class="link-btn">Alle categorieën aan</button>
+            <span class="link-sep">/</span>
+            <button type="button" id="btn-cat-places-only" class="link-btn">Alleen woonplaatsen</button>
+          </div>
+          <div id="categories-container" class="categories-list" role="group" aria-label="Categorieën en moeilijkheidsgraad">
+            <!-- Woonplaatsen -->
+            <div class="category-card active" data-category-card="plaats">
+              <div class="category-card-header">
+                <label class="category-toggle-label">
+                  <input type="checkbox" class="category-checkbox" data-category="plaats" checked>
+                  <span class="category-name">Woonplaatsen</span>
+                </label>
+                <span class="category-count-badge" data-category-count="plaats">334</span>
+              </div>
+              <div class="category-tier-row" role="radiogroup" aria-label="Moeilijkheidsgraad Woonplaatsen">
+                <button type="button" class="tier-btn" data-category-tier="plaats" data-tier="1" title="Grote steden (&gt; 50.000 inwoners)">&gt; 50k</button>
+                <button type="button" class="tier-btn active" data-category-tier="plaats" data-tier="2" title="Standaard (&gt; 10.000 inwoners)">&gt; 10k</button>
+                <button type="button" class="tier-btn" data-category-tier="plaats" data-tier="3" title="Middelgroot (&gt; 2.500 inwoners)">&gt; 2,5k</button>
+                <button type="button" class="tier-btn" data-category-tier="plaats" data-tier="4" title="Alle Nederlandse woonplaatsen">Alle</button>
+              </div>
+            </div>
+
+            <!-- Snelwegen -->
+            <div class="category-card" data-category-card="snelweg">
+              <div class="category-card-header">
+                <label class="category-toggle-label">
+                  <input type="checkbox" class="category-checkbox" data-category="snelweg">
+                  <span class="category-name">Snelwegen</span>
+                </label>
+                <span class="category-count-badge" data-category-count="snelweg">0</span>
+              </div>
+              <div class="category-tier-row" role="radiogroup" aria-label="Moeilijkheidsgraad Snelwegen">
+                <button type="button" class="tier-btn" data-category-tier="snelweg" data-tier="1" title="Belangrijkste hoofdaders (&gt; 80 km)">Hoofdwegen</button>
+                <button type="button" class="tier-btn active" data-category-tier="snelweg" data-tier="2" title="Bekende snelwegen (&gt; 25 km)">Middelgroot</button>
+                <button type="button" class="tier-btn" data-category-tier="snelweg" data-tier="3" title="Alle Nederlandse rijkswegen (A-wegen)">Alle A-wegen</button>
+              </div>
+            </div>
+
+            <!-- Rivieren -->
+            <div class="category-card" data-category-card="rivier">
+              <div class="category-card-header">
+                <label class="category-toggle-label">
+                  <input type="checkbox" class="category-checkbox" data-category="rivier">
+                  <span class="category-name">Rivieren</span>
+                </label>
+                <span class="category-count-badge" data-category-count="rivier">0</span>
+              </div>
+              <div class="category-tier-row" role="radiogroup" aria-label="Moeilijkheidsgraad Rivieren">
+                <button type="button" class="tier-btn" data-category-tier="rivier" data-tier="1" title="Grote hoofdrivieren (Rijn, Maas, Waal, IJssel...)">Hoofdrivieren</button>
+                <button type="button" class="tier-btn active" data-category-tier="rivier" data-tier="2" title="Bekende regionale rivieren">Regionaal</button>
+                <button type="button" class="tier-btn" data-category-tier="rivier" data-tier="3" title="Alle rivieren en beken in de dataset">Alle rivieren</button>
+              </div>
+            </div>
+
+            <!-- Kanalen -->
+            <div class="category-card" data-category-card="kanaal">
+              <div class="category-card-header">
+                <label class="category-toggle-label">
+                  <input type="checkbox" class="category-checkbox" data-category="kanaal">
+                  <span class="category-name">Kanalen</span>
+                </label>
+                <span class="category-count-badge" data-category-count="kanaal">0</span>
+              </div>
+              <div class="category-tier-row" role="radiogroup" aria-label="Moeilijkheidsgraad Kanalen">
+                <button type="button" class="tier-btn" data-category-tier="kanaal" data-tier="1" title="Grote hoofdkanalen (Amsterdam-Rijnkanaal, Noordzeekanaal...)">Hoofdkanalen</button>
+                <button type="button" class="tier-btn active" data-category-tier="kanaal" data-tier="2" title="Bekende regionale kanalen en vaarten">Regionaal</button>
+                <button type="button" class="tier-btn" data-category-tier="kanaal" data-tier="3" title="Alle kanalen in de dataset">Alle kanalen</button>
+              </div>
+            </div>
+
+            <!-- Meren & Wateren -->
+            <div class="category-card" data-category-card="meer">
+              <div class="category-card-header">
+                <label class="category-toggle-label">
+                  <input type="checkbox" class="category-checkbox" data-category="meer">
+                  <span class="category-name">Meren &amp; Wateren</span>
+                </label>
+                <span class="category-count-badge" data-category-count="meer">0</span>
+              </div>
+              <div class="category-tier-row" role="radiogroup" aria-label="Moeilijkheidsgraad Meren en Wateren">
+                <button type="button" class="tier-btn" data-category-tier="meer" data-tier="1" title="Grote meren en zeearmen (IJsselmeer, Oosterschelde...)">Grote wateren</button>
+                <button type="button" class="tier-btn active" data-category-tier="meer" data-tier="2" title="Bekende meren, randmeren en plassen">Middelgroot</button>
+                <button type="button" class="tier-btn" data-category-tier="meer" data-tier="3" title="Alle meren en plassen in de dataset">Alle meren</button>
+              </div>
+            </div>
+
+            <!-- Natuurgebieden -->
+            <div class="category-card" data-category-card="natuurgebied">
+              <div class="category-card-header">
+                <label class="category-toggle-label">
+                  <input type="checkbox" class="category-checkbox" data-category="natuurgebied">
+                  <span class="category-name">Natuurgebieden</span>
+                </label>
+                <span class="category-count-badge" data-category-count="natuurgebied">0</span>
+              </div>
+              <div class="category-tier-row" role="radiogroup" aria-label="Moeilijkheidsgraad Natuurgebieden">
+                <button type="button" class="tier-btn" data-category-tier="natuurgebied" data-tier="1" title="Officiële Nationale Parken (21 gebieden)">Nat. Parken</button>
+                <button type="button" class="tier-btn active" data-category-tier="natuurgebied" data-tier="2" title="Nationale Parken en grote Natura 2000-gebieden">Groot N2000</button>
+                <button type="button" class="tier-btn" data-category-tier="natuurgebied" data-tier="3" title="Alle Nationale Parken en Natura 2000-gebieden">Alle natuur</button>
+              </div>
+            </div>
+
+            <!-- Belangrijke gebouwen -->
+            <div class="category-card" data-category-card="gebouw">
+              <div class="category-card-header">
+                <label class="category-toggle-label">
+                  <input type="checkbox" class="category-checkbox" data-category="gebouw">
+                  <span class="category-name">Belangrijke gebouwen</span>
+                </label>
+                <span class="category-count-badge" data-category-count="gebouw">0</span>
+              </div>
+              <div class="category-tier-row" role="radiogroup" aria-label="Moeilijkheidsgraad Belangrijke gebouwen">
+                <button type="button" class="tier-btn" data-category-tier="gebouw" data-tier="1" title="De bekendste nationale iconen en bouwwerken">Top-iconen</button>
+                <button type="button" class="tier-btn active" data-category-tier="gebouw" data-tier="2" title="Bekende monumenten, musea, stadions en waterwerken">Bekend</button>
+                <button type="button" class="tier-btn" data-category-tier="gebouw" data-tier="3" title="Uitgebreide selectie van bouwwerken en monumenten">Uitgebreid</button>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -126,7 +227,7 @@
             </div>
             <div class="stat-row">
               <span class="stat-text">Totaal beheerst in Nederland:</span>
-              <span class="stat-num"><strong id="stats-total-mastered">0</strong> / 2.503</span>
+              <span class="stat-num"><strong id="stats-total-mastered">0</strong> / <span id="stats-grand-total">2.503</span></span>
             </div>
           </div>
           <button type="button" id="btn-reset-progress" class="btn btn-warning-outline btn-block">
@@ -199,7 +300,7 @@
       <div class="modal-card">
         <h2 id="reset-modal-title" class="modal-title">Voortgang resetten</h2>
         <p class="modal-text">
-          Weet je zeker dat je alle beheerste woonplaatsen wilt wissen? Dit verwijdert je opgeslagen voortgang uit de browser en zet de teller op 0.
+          Weet je zeker dat je alle beheerste objecten wilt wissen? Dit verwijdert je opgeslagen voortgang uit de browser en zet de teller op 0.
         </p>
         <div class="modal-actions">
           <button id="btn-confirm-reset" class="btn btn-danger">Reset voortgang</button>
@@ -213,8 +314,7 @@
       <div class="modal-card">
         <h2 id="completion-title" class="modal-title">Selectie voltooid</h2>
         <p id="completion-message" class="modal-text">
-          Je hebt alle woonplaatsen in deze selectie <strong>Beheerst</strong>.
-          Alle gokken vielen binnen de polygoon of binnen de 3 km tolerantiegrens.
+          Je hebt alle objecten in deze selectie <strong>Beheerst</strong>.
         </p>
         <div class="modal-actions">
           <button id="btn-restart" class="btn btn-primary">

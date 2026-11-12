@@ -22,33 +22,62 @@
     'Zuid-Holland'
   ];
 
+  // Supported GeoFeature categories
+  const CATEGORIES = [
+    { id: 'plaats', badge: 'plaats', label: 'Woonplaatsen', defaultTier: 2 },
+    { id: 'snelweg', badge: 'snelweg', label: 'Snelwegen', defaultTier: 2 },
+    { id: 'rivier', badge: 'rivier', label: 'Rivieren', defaultTier: 2 },
+    { id: 'kanaal', badge: 'kanaal', label: 'Kanalen', defaultTier: 2 },
+    { id: 'meer', badge: 'meer / water', label: 'Meren & Wateren', defaultTier: 2 },
+    { id: 'natuurgebied', badge: 'natuurgebied', label: 'Natuurgebieden', defaultTier: 2 },
+    { id: 'gebouw', badge: 'gebouw', label: 'Belangrijke gebouwen', defaultTier: 2 }
+  ];
+
+  const CATEGORY_MAP = Object.fromEntries(CATEGORIES.map(c => [c.id, c]));
+
   // Storage keys for browser persistence
   const STORAGE_KEYS = {
     SETTINGS: 'topotrainer_settings_v1',
     MASTERED: 'topotrainer_mastered_v1'
   };
 
+  const DEFAULT_CATEGORY_TIERS = {
+    plaats: 2,        // 1: >50k, 2: >10k (standaard), 3: >2.5k, 4: alle
+    snelweg: 2,       // 1: hoofdwegen, 2: middelgroot, 3: alle A-wegen
+    rivier: 2,        // 1: hoofdrivieren, 2: regionaal, 3: alle rivieren
+    kanaal: 2,        // 1: hoofdkanalen, 2: regionaal, 3: alle kanalen
+    meer: 2,          // 1: grote wateren, 2: middelgroot, 3: alle meren
+    natuurgebied: 2,  // 1: Nat. Parken, 2: Groot N2000, 3: Alle natuur
+    gebouw: 2         // 1: Top-iconen, 2: Bekend, 3: Uitgebreid
+  };
+
   const DEFAULT_SETTINGS = {
     baseLayer: 'normal',   // 'normal' | 'satellite'
     toleranceKm: 3,        // 0 (precies goed) | 3 (binnen 3 km)
-    minInhabitants: 10000, // 50000 | 10000 | 2500 | 0
+    categories: ['plaats'],
+    categoryTiers: { ...DEFAULT_CATEGORY_TIERS },
     provinces: []          // string[] (empty means all provinces / Heel Nederland)
   };
 
   // Game state
   const state = {
-    allFeatures: [],              // All 2,503 GeoFeatures loaded from dataset
+    allFeatures: [],              // All GeoFeatures loaded from datasets
     currentFilteredFeatures: [],  // Subset of GeoFeatures matching active settings filters
     questionPool: [],             // Active Vraagpool (filtered features minus Beheerst)
-    masteredCodes: new Set(),     // Set of mastered (Beheerst) woonplaatscodes from localStorage
-    settings: { ...DEFAULT_SETTINGS },
+    masteredCodes: new Set(),     // Set of mastered (Beheerst) codes from localStorage
+    settings: {
+      ...DEFAULT_SETTINGS,
+      categories: [...DEFAULT_SETTINGS.categories],
+      categoryTiers: { ...DEFAULT_CATEGORY_TIERS }
+    },
     isSettingsOpen: false,
     isResetModalOpen: false,
     isCompletionModalOpen: false,
-    currentTarget: null,          // Currently active Woonplaats GeoFeature
+    currentTarget: null,          // Currently active GeoFeature
     currentGok: null,             // Current player guess: [lat, lon]
     gokMarker: null,              // Leaflet marker for Gok
-    targetPolygonLayer: null,     // Leaflet GeoJSON layer for showing target polygon
+    targetPolygonLayer: null,     // Leaflet GeoJSON layer for showing target geometry
+    targetHighlightLayer: null,   // Optional highlight marker for small building footprints
     feedbackLineLayer: null,      // Leaflet polyline for dashed distance line
     feedbackLabelLayer: null,     // Leaflet marker for distance label on midpoint
     activeBaseLayer: 'normal',    // 'normal' | 'satellite'
@@ -73,7 +102,11 @@
     settingsLayerSat: document.querySelector('.segment-btn[data-style="satellite"]'),
     toleranceBtns: document.querySelectorAll('.segment-btn[data-tolerance]'),
     inhabitantsBadge: document.getElementById('inhabitants-badge'),
-    presetBtns: document.querySelectorAll('.preset-btn'),
+    btnCatAll: document.getElementById('btn-cat-all'),
+    btnCatPlacesOnly: document.getElementById('btn-cat-places-only'),
+    categoriesContainer: document.getElementById('categories-container'),
+    categoryCheckboxes: document.querySelectorAll('.category-checkbox'),
+    tierBtns: document.querySelectorAll('.tier-btn'),
     btnProvAll: document.getElementById('btn-prov-all'),
     btnProvClear: document.getElementById('btn-prov-clear'),
     provinceGrid: document.getElementById('province-grid'),
@@ -83,6 +116,7 @@
     statsCurrentTotal: document.getElementById('stats-current-total'),
     statsCurrentPct: document.getElementById('stats-current-pct'),
     statsTotalMastered: document.getElementById('stats-total-mastered'),
+    statsGrandTotal: document.getElementById('stats-grand-total'),
     btnResetProgress: document.getElementById('btn-reset-progress'),
 
     // Top-right quick layer switch
@@ -114,24 +148,53 @@
   };
 
   /**
-   * Load stored settings from localStorage with fallbacks
+   * Load stored settings from localStorage with fallbacks and migration from v1 minInhabitants
    */
   function loadStoredSettings() {
     try {
       const raw = localStorage.getItem(STORAGE_KEYS.SETTINGS);
       if (raw) {
         const parsed = JSON.parse(raw);
+        const tiers = { ...DEFAULT_CATEGORY_TIERS };
+
+        // Migrate legacy minInhabitants if present
+        if (parsed.minInhabitants !== undefined && !parsed.categoryTiers) {
+          if (parsed.minInhabitants === 50000) tiers.plaats = 1;
+          else if (parsed.minInhabitants === 10000) tiers.plaats = 2;
+          else if (parsed.minInhabitants === 2500) tiers.plaats = 3;
+          else if (parsed.minInhabitants === 0) tiers.plaats = 4;
+        }
+
+        if (parsed.categoryTiers && typeof parsed.categoryTiers === 'object') {
+          CATEGORIES.forEach(c => {
+            const val = parseInt(parsed.categoryTiers[c.id], 10);
+            const maxTier = c.id === 'plaats' ? 4 : 3;
+            if (val >= 1 && val <= maxTier) {
+              tiers[c.id] = val;
+            }
+          });
+        }
+
+        const validCats = Array.isArray(parsed.categories)
+          ? parsed.categories.filter(id => CATEGORY_MAP[id])
+          : ['plaats'];
+
         return {
           baseLayer: parsed.baseLayer === 'satellite' ? 'satellite' : 'normal',
           toleranceKm: parsed.toleranceKm === 0 ? 0 : 3,
-          minInhabitants: [50000, 10000, 2500, 0].includes(parsed.minInhabitants) ? parsed.minInhabitants : 10000,
+          categories: validCats.length > 0 ? validCats : ['plaats'],
+          categoryTiers: tiers,
           provinces: Array.isArray(parsed.provinces) ? parsed.provinces.filter(p => PROVINCES.includes(p)) : []
         };
       }
     } catch (err) {
       console.warn('Kon instellingen niet lezen uit localStorage:', err);
     }
-    return { ...DEFAULT_SETTINGS };
+    return {
+      ...DEFAULT_SETTINGS,
+      categories: [...DEFAULT_SETTINGS.categories],
+      categoryTiers: { ...DEFAULT_CATEGORY_TIERS }
+    };
   }
 
   /**
@@ -264,7 +327,7 @@
   }
 
   /**
-   * Switch between Normal (Positron) and Satellite (PDOK Ortho)
+   * Switch between Normal (Positron) and Satellite (Esri World Imagery)
    */
   function setBaseLayer(type) {
     if (type !== 'normal' && type !== 'satellite') return;
@@ -328,23 +391,76 @@
   }
 
   /**
-   * Calculate filtered GeoFeatures matching active settings filters
+   * Return normalized category id for a GeoFeature
+   */
+  function getFeatureCategory(f) {
+    return (f && f.properties && f.properties.categorie) || 'plaats';
+  }
+
+  /**
+   * Return difficulty tier (1..4) for a GeoFeature
+   */
+  function getFeatureTier(f) {
+    const p = (f && f.properties) || {};
+    if (typeof p.tier === 'number') return p.tier;
+    // Default calculation for Woonplaatsen based on inhabitants
+    const inh = p.inwoners || 0;
+    if (inh > 50000) return 1;
+    if (inh > 10000) return 2;
+    if (inh > 2500) return 3;
+    return 4;
+  }
+
+  /**
+   * Return array of province names that a GeoFeature belongs to
+   */
+  function getFeatureProvinces(f) {
+    const p = (f && f.properties) || {};
+    if (Array.isArray(p.provincies) && p.provincies.length > 0) {
+      return p.provincies;
+    }
+    if (p.provincie) {
+      return [p.provincie];
+    }
+    return [];
+  }
+
+  /**
+   * Check if feature matches currently selected province filter
+   */
+  function matchesProvinceFilter(f) {
+    const selProvs = state.settings.provinces;
+    if (!selProvs || selProvs.length === 0 || selProvs.length === PROVINCES.length) {
+      return true;
+    }
+    if (selProvs.includes('_none_')) {
+      return false;
+    }
+    const featProvs = getFeatureProvinces(f);
+    if (featProvs.length === 0) return true;
+    return featProvs.some(prov => selProvs.includes(prov));
+  }
+
+  /**
+   * Check if feature matches its category's selected difficulty tier
+   */
+  function matchesCategoryTier(f) {
+    const cat = getFeatureCategory(f);
+    const selectedTier = (state.settings.categoryTiers && state.settings.categoryTiers[cat]) || 2;
+    const featTier = getFeatureTier(f);
+    return featTier <= selectedTier;
+  }
+
+  /**
+   * Calculate filtered GeoFeatures matching active categories, category tiers, and provinces
    */
   function getFilteredFeatures() {
-    const minInh = state.settings.minInhabitants;
-    const selProvs = state.settings.provinces;
-    const hasProvFilter = selProvs && selProvs.length > 0 && selProvs.length < PROVINCES.length;
-
+    const activeCats = new Set(state.settings.categories || ['plaats']);
     return state.allFeatures.filter(f => {
-      const p = f.properties;
-      const inh = p.inwoners || 0;
-
-      // Inhabitant preset check (> N)
-      if (minInh > 0 && inh <= minInh) return false;
-
-      // Province filter check
-      if (hasProvFilter && !selProvs.includes(p.provincie)) return false;
-
+      const cat = getFeatureCategory(f);
+      if (!activeCats.has(cat)) return false;
+      if (!matchesCategoryTier(f)) return false;
+      if (!matchesProvinceFilter(f)) return false;
       return true;
     });
   }
@@ -362,6 +478,7 @@
     });
 
     updateProgressUI();
+    updateCategoriesUI();
     updateSettingsStatsUI();
     updateProvinceCheckboxesCounts();
   }
@@ -372,12 +489,55 @@
   function updateProgressUI() {
     const total = state.currentFilteredFeatures.length;
     const unmastered = state.questionPool.length;
-    const mastered = total - unmastered; // Mastered within this filter set
+    const mastered = total - unmastered;
 
     el.masteredCount.textContent = mastered;
     el.poolTotal.textContent = total;
     const pct = total > 0 ? Math.round((mastered / total) * 100) : 0;
     el.progressFill.style.width = pct + '%';
+  }
+
+  /**
+   * Update category cards, checkboxes, tier buttons, and per-category counts
+   */
+  function updateCategoriesUI() {
+    const activeCats = new Set(state.settings.categories || []);
+    const countsByCat = {};
+    CATEGORIES.forEach(c => { countsByCat[c.id] = 0; });
+
+    state.allFeatures.forEach(f => {
+      const cat = getFeatureCategory(f);
+      if (countsByCat[cat] !== undefined && matchesCategoryTier(f) && matchesProvinceFilter(f)) {
+        countsByCat[cat]++;
+      }
+    });
+
+    CATEGORIES.forEach(c => {
+      const isEnabled = activeCats.has(c.id);
+      const card = document.querySelector(`[data-category-card="${c.id}"]`);
+      if (card) {
+        card.classList.toggle('active', isEnabled);
+      }
+
+      const cb = document.querySelector(`.category-checkbox[data-category="${c.id}"]`);
+      if (cb) {
+        cb.checked = isEnabled;
+      }
+
+      const badge = document.querySelector(`[data-category-count="${c.id}"]`);
+      if (badge) {
+        badge.textContent = countsByCat[c.id];
+      }
+
+      const activeTier = (state.settings.categoryTiers && state.settings.categoryTiers[c.id]) || c.defaultTier;
+      const tierButtons = document.querySelectorAll(`.tier-btn[data-category-tier="${c.id}"]`);
+      tierButtons.forEach(btn => {
+        const t = parseInt(btn.getAttribute('data-tier'), 10);
+        const isCurrent = t === activeTier;
+        btn.classList.toggle('active', isCurrent);
+        btn.setAttribute('aria-checked', isCurrent ? 'true' : 'false');
+      });
+    });
   }
 
   /**
@@ -393,30 +553,37 @@
     if (el.statsCurrentTotal) el.statsCurrentTotal.textContent = totalInFilter;
     if (el.statsCurrentPct) el.statsCurrentPct.textContent = pctInFilter + '%';
 
-    // Total mastered across the complete 2,503 dataset
     if (el.statsTotalMastered) el.statsTotalMastered.textContent = state.masteredCodes.size;
+    if (el.statsGrandTotal) el.statsGrandTotal.textContent = state.allFeatures.length.toLocaleString('nl-NL');
 
     if (el.inhabitantsBadge) {
-      el.inhabitantsBadge.textContent = `${totalInFilter} ${totalInFilter === 1 ? 'plaats' : 'plaatsen'}`;
+      const onlyPlaces = state.settings.categories.length === 1 && state.settings.categories[0] === 'plaats';
+      const unit = onlyPlaces
+        ? (totalInFilter === 1 ? 'plaats' : 'plaatsen')
+        : (totalInFilter === 1 ? 'object' : 'objecten');
+      el.inhabitantsBadge.textContent = `${totalInFilter} ${unit}`;
     }
   }
 
   /**
-   * Update province counts next to checkboxes based on active population preset
+   * Update province counts next to checkboxes based on active categories and tiers
    */
   function updateProvinceCheckboxesCounts() {
     if (!el.provinceGrid) return;
-    const minInh = state.settings.minInhabitants;
+    const activeCats = new Set(state.settings.categories || []);
 
-    // Count places per province matching minInhabitants
     const counts = {};
     PROVINCES.forEach(p => { counts[p] = 0; });
+
     state.allFeatures.forEach(f => {
-      const p = f.properties.provincie;
-      const inh = f.properties.inwoners || 0;
-      if (minInh === 0 || inh > minInh) {
+      const cat = getFeatureCategory(f);
+      if (!activeCats.has(cat)) return;
+      if (!matchesCategoryTier(f)) return;
+
+      const provs = getFeatureProvinces(f);
+      provs.forEach(p => {
         if (counts[p] !== undefined) counts[p]++;
-      }
+      });
     });
 
     PROVINCES.forEach(prov => {
@@ -477,10 +644,8 @@
     });
 
     if (checkedProvinces.length === PROVINCES.length || checkedProvinces.length === 0) {
-      // If all or none are checked, treat as Heel Nederland
       state.settings.provinces = [];
       if (checkedProvinces.length === 0) {
-        // If user unchecked everything, visually keep checkboxes checked for Heel Nederland
         checkboxes.forEach(cb => { cb.checked = true; });
       }
     } else {
@@ -513,8 +678,7 @@
    * Clear province selection (deselect all)
    */
   function clearAllProvinces() {
-    // If cleared, user can check specific provinces
-    state.settings.provinces = ['_none_']; // temporary marker indicating explicit empty selection
+    state.settings.provinces = ['_none_'];
     saveStoredSettings();
 
     if (el.provinceGrid) {
@@ -525,6 +689,67 @@
 
     rebuildPoolAndUI();
     nextQuestion();
+  }
+
+  /**
+   * Handle category checkbox toggle
+   */
+  function handleCategoryToggle() {
+    const checked = [];
+    el.categoryCheckboxes.forEach(cb => {
+      if (cb.checked) {
+        checked.push(cb.getAttribute('data-category'));
+      }
+    });
+
+    // Ensure at least one category remains active; fallback to 'plaats' if user unchecks last one
+    if (checked.length === 0) {
+      checked.push('plaats');
+    }
+
+    state.settings.categories = checked;
+    saveStoredSettings();
+    rebuildPoolAndUI();
+    nextQuestion();
+  }
+
+  /**
+   * Select all 7 categories
+   */
+  function selectAllCategories() {
+    state.settings.categories = CATEGORIES.map(c => c.id);
+    saveStoredSettings();
+    rebuildPoolAndUI();
+    nextQuestion();
+  }
+
+  /**
+   * Reset categories to Woonplaatsen only
+   */
+  function selectPlacesOnly() {
+    state.settings.categories = ['plaats'];
+    saveStoredSettings();
+    rebuildPoolAndUI();
+    nextQuestion();
+  }
+
+  /**
+   * Change difficulty tier for a specific category
+   */
+  function setCategoryTier(categoryId, tierVal) {
+    if (!CATEGORY_MAP[categoryId]) return;
+    const maxTier = categoryId === 'plaats' ? 4 : 3;
+    if (tierVal < 1 || tierVal > maxTier) return;
+
+    if (!state.settings.categoryTiers) {
+      state.settings.categoryTiers = { ...DEFAULT_CATEGORY_TIERS };
+    }
+    state.settings.categoryTiers[categoryId] = tierVal;
+    saveStoredSettings();
+    rebuildPoolAndUI();
+    if (state.settings.categories.includes(categoryId)) {
+      nextQuestion();
+    }
   }
 
   /**
@@ -550,32 +775,6 @@
     state.settings.toleranceKm = val;
     saveStoredSettings();
     updateToleranceUI(val);
-  }
-
-  /**
-   * Update active inhabitant preset buttons UI
-   */
-  function updateInhabitantsPresetUI(val) {
-    el.presetBtns.forEach(btn => {
-      const inh = parseInt(btn.getAttribute('data-inhabitants'), 10);
-      const isActive = inh === val;
-      btn.classList.toggle('active', isActive);
-      btn.setAttribute('aria-checked', isActive ? 'true' : 'false');
-    });
-  }
-
-  /**
-   * Change minimum inhabitants preset
-   */
-  function setMinInhabitants(val) {
-    if (![50000, 10000, 2500, 0].includes(val)) return;
-    if (state.settings.minInhabitants === val) return;
-
-    state.settings.minInhabitants = val;
-    saveStoredSettings();
-    updateInhabitantsPresetUI(val);
-    rebuildPoolAndUI();
-    nextQuestion();
   }
 
   /**
@@ -640,7 +839,7 @@
     state.isCompletionModalOpen = true;
     const total = state.currentFilteredFeatures.length;
     if (el.completionMessage) {
-      el.completionMessage.innerHTML = `Je hebt alle <strong>${total}</strong> woonplaatsen in deze selectie <strong>Beheerst</strong>.<br>Alle gokken vielen binnen de polygoon of binnen de 3 km tolerantiegrens.`;
+      el.completionMessage.innerHTML = `Je hebt alle <strong>${total}</strong> objecten in deze selectie <strong>Beheerst</strong>.`;
     }
     el.completionModal.hidden = false;
     el.completionModal.classList.add('active');
@@ -653,11 +852,10 @@
   }
 
   /**
-   * Restart session for current selection: resets mastered places within current filter
+   * Restart session for current selection: resets mastered items within current filter
    */
   function restartSession() {
     closeCompletionModal();
-    // Remove mastered codes that are in the current filter, or reset all if heel Nederland
     state.currentFilteredFeatures.forEach(f => {
       const code = String(f.properties.code || f.properties.id);
       state.masteredCodes.delete(code);
@@ -668,28 +866,53 @@
   }
 
   /**
-   * Load TopoJSON dataset and start game
+   * Load TopoJSON datasets (woonplaatsen + extra categories) and start game
    */
   async function loadData() {
     try {
-      const response = await fetch('data/woonplaatsen.topo.json');
-      if (!response.ok) {
-        throw new Error('Kon data/woonplaatsen.topo.json niet laden: HTTP ' + response.status);
+      const [wpResponse, extraResponse] = await Promise.all([
+        fetch('data/woonplaatsen.topo.json'),
+        fetch('data/extra_features.topo.json').catch(() => null)
+      ]);
+
+      if (!wpResponse || !wpResponse.ok) {
+        throw new Error('Kon data/woonplaatsen.topo.json niet laden');
       }
-      const topoData = await response.json();
-      const geojson = topojson.feature(topoData, topoData.objects.woonplaatsen);
-      state.allFeatures = geojson.features;
+
+      const wpTopo = await wpResponse.json();
+      const wpGeojson = topojson.feature(wpTopo, wpTopo.objects.woonplaatsen);
+      const wpFeatures = (wpGeojson.features || []).map(f => {
+        f.properties = f.properties || {};
+        if (!f.properties.categorie) f.properties.categorie = 'plaats';
+        if (!f.properties.provincies && f.properties.provincie) {
+          f.properties.provincies = [f.properties.provincie];
+        }
+        f.properties.tier = getFeatureTier(f);
+        return f;
+      });
+
+      let extraFeatures = [];
+      if (extraResponse && extraResponse.ok) {
+        const extraTopo = await extraResponse.json();
+        Object.keys(extraTopo.objects || {}).forEach(objKey => {
+          const extraGeojson = topojson.feature(extraTopo, extraTopo.objects[objKey]);
+          if (extraGeojson && Array.isArray(extraGeojson.features)) {
+            extraFeatures = extraFeatures.concat(extraGeojson.features);
+          }
+        });
+      }
+
+      state.allFeatures = wpFeatures.concat(extraFeatures);
 
       renderProvinceCheckboxes();
       updateToleranceUI(state.settings.toleranceKm);
-      updateInhabitantsPresetUI(state.settings.minInhabitants);
       rebuildPoolAndUI();
       nextQuestion();
     } catch (err) {
       console.error('Fout bij het laden van dataset:', err);
       el.targetName.textContent = 'Fout bij inladen';
       el.targetProvince.textContent = 'fout';
-      el.targetDetails.textContent = 'Controleer netwerkverbinding of data/woonplaatsen.topo.json';
+      el.targetDetails.textContent = 'Controleer netwerkverbinding of databestanden in data/';
       el.targetDetails.hidden = false;
     }
   }
@@ -708,6 +931,10 @@
     if (state.targetPolygonLayer) {
       map.removeLayer(state.targetPolygonLayer);
       state.targetPolygonLayer = null;
+    }
+    if (state.targetHighlightLayer) {
+      map.removeLayer(state.targetHighlightLayer);
+      state.targetHighlightLayer = null;
     }
     if (state.feedbackLineLayer) {
       map.removeLayer(state.feedbackLineLayer);
@@ -732,20 +959,20 @@
     el.btnOk.style.display = 'inline-flex';
     el.btnOk.disabled = true;
 
-    // Check if filter has zero places matching criteria
+    // Check if filter has zero objects matching criteria
     if (state.currentFilteredFeatures.length === 0) {
-      el.targetName.textContent = 'Geen woonplaatsen';
+      el.targetName.textContent = 'Geen objecten';
       el.targetProvince.textContent = 'Filter leeg';
-      el.targetDetails.textContent = 'Geen woonplaatsen gevonden voor deze selectie. Wijzig inwoners of provincies in Instellingen.';
+      el.targetDetails.textContent = 'Geen objecten gevonden voor deze selectie. Wijzig categorieën of provincies in Instellingen.';
       el.targetDetails.hidden = false;
       return;
     }
 
-    // Check if all places in current filter are mastered
+    // Check if all objects in current filter are mastered
     if (state.questionPool.length === 0) {
       el.targetName.textContent = 'Selectie voltooid';
       el.targetProvince.textContent = '100% Beheerst';
-      el.targetDetails.textContent = 'Alle woonplaatsen in deze selectie zijn beheerst. Open het instellingenmenu voor een nieuwe selectie.';
+      el.targetDetails.textContent = 'Alle objecten in deze selectie zijn beheerst. Open het instellingenmenu voor een nieuwe selectie.';
       el.targetDetails.hidden = false;
       if (el.promptSubRow) el.promptSubRow.hidden = false;
       showCompletionModal();
@@ -757,16 +984,41 @@
     state.currentTarget = state.questionPool[randomIndex];
 
     const p = state.currentTarget.properties;
-    el.targetName.textContent = p.naam;
-    el.targetProvince.textContent = p.categorie || 'plaats';
+    const catId = getFeatureCategory(state.currentTarget);
+    const catMeta = CATEGORY_MAP[catId];
 
-    // Hide provincie, gemeente and inwoners before OK is clicked
+    el.targetName.textContent = p.naam;
+    el.targetProvince.textContent = p.subcategorie || (catMeta ? catMeta.badge : (p.categorie || 'plaats'));
+
+    // Hide details before OK is clicked
     el.targetDetails.textContent = '';
     el.targetDetails.hidden = true;
   }
 
   /**
-   * Submit player guess and calculate distance to boundary
+   * Build category-appropriate detail string after player clicks OK
+   */
+  function formatTargetDetails(feature) {
+    const p = feature.properties || {};
+    const cat = getFeatureCategory(feature);
+    const provs = getFeatureProvinces(feature);
+    const provText = provs.length > 0 ? provs.join(', ') : '';
+
+    if (cat === 'plaats') {
+      const formattedInhabitants = (p.inwoners || 0).toLocaleString('nl-NL');
+      const prefix = provText ? `${provText} · ` : '';
+      return `${prefix}Gemeente ${p.gemeente || p.naam} · ${formattedInhabitants} inwoners`;
+    }
+
+    const parts = [];
+    if (provText) parts.push(provText);
+    if (p.plaats) parts.push(p.plaats);
+    if (p.details) parts.push(p.details);
+    return parts.join(' · ');
+  }
+
+  /**
+   * Submit player guess and calculate distance to boundary/line
    */
   function submitGuess() {
     if (!state.currentGok || !state.currentTarget || state.isFeedbackPhase) return;
@@ -779,11 +1031,8 @@
     el.btnNext.hidden = false;
     el.btnNext.style.display = 'inline-flex';
 
-    // Reveal provincie, gemeente and inwoners after OK is clicked
-    const p = state.currentTarget.properties;
-    const formattedInhabitants = (p.inwoners || 0).toLocaleString('nl-NL');
-    const provText = p.provincie ? `${p.provincie} · ` : '';
-    el.targetDetails.textContent = `${provText}Gemeente ${p.gemeente || p.naam} · ${formattedInhabitants} inwoners`;
+    // Reveal details after OK is clicked
+    el.targetDetails.textContent = formatTargetDetails(state.currentTarget);
     el.targetDetails.hidden = false;
 
     // Prevent dragging marker while showing feedback
@@ -794,27 +1043,67 @@
     // Gok point in [lon, lat] format for TopoGeometry
     const gokPoint = [state.currentGok[1], state.currentGok[0]];
     const geometry = state.currentTarget.geometry;
+    const cat = getFeatureCategory(state.currentTarget);
+    const isLineOrBuilding = (
+      geometry.type === 'LineString' ||
+      geometry.type === 'MultiLineString' ||
+      geometry.type === 'Point' ||
+      cat === 'snelweg' ||
+      cat === 'kanaal' ||
+      cat === 'rivier' ||
+      cat === 'gebouw'
+    );
 
-    // Compute shortest distance to boundary
+    // Compute shortest distance to boundary or line segment
     const result = TopoGeometry.getDistanceToGeometry(gokPoint, geometry);
-    const distanceKm = result.distanceKm;
-    const tolerance = state.settings.toleranceKm;
-    const isMastered = tolerance === 0 ? result.inside : (result.inside || distanceKm <= tolerance);
+    const rawDist = typeof result.rawDistanceKm === 'number' ? result.rawDistanceKm : result.distanceKm;
 
-    // Show target polygon on map
+    // Small click buffer (350m) for lines and buildings in 'Precies goed' mode
+    const exactHitBufferKm = isLineOrBuilding ? 0.35 : 0;
+    const isDirectHit = result.inside || rawDist <= exactHitBufferKm;
+    const distanceKm = isDirectHit ? 0 : result.distanceKm;
+
+    const tolerance = state.settings.toleranceKm;
+    const isMastered = tolerance === 0 ? isDirectHit : (isDirectHit || distanceKm <= tolerance);
+
+    // Show target geometry on map
     const polyColor = isMastered ? '#16a34a' : '#ea580c';
     const polyFill = isMastered ? '#22c55e' : '#f97316';
+    const isLineGeom = geometry.type === 'LineString' || geometry.type === 'MultiLineString';
 
     state.targetPolygonLayer = L.geoJSON(state.currentTarget, {
       style: {
         color: polyColor,
-        weight: 2.5,
+        weight: isLineGeom ? 4.5 : 2.5,
+        opacity: isLineGeom ? 0.92 : 1,
         fillColor: polyFill,
-        fillOpacity: 0.35
+        fillOpacity: isLineGeom ? 0 : 0.35
+      },
+      pointToLayer: function (feature, latlng) {
+        return L.circleMarker(latlng, {
+          radius: 8,
+          color: polyColor,
+          weight: 2.5,
+          fillColor: polyFill,
+          fillOpacity: 0.45
+        });
       }
     }).addTo(map);
 
-    // If incorrect, draw dashed line from Gok to nearest point on polygon boundary
+    // For small building footprints, add a subtle pulsing ring at the building center so it is easy to spot
+    if (cat === 'gebouw' && state.targetPolygonLayer) {
+      const bCenter = state.targetPolygonLayer.getBounds().getCenter();
+      state.targetHighlightLayer = L.circleMarker(bCenter, {
+        radius: 10,
+        color: polyColor,
+        weight: 2,
+        fillColor: polyFill,
+        fillOpacity: 0.25,
+        interactive: false
+      }).addTo(map);
+    }
+
+    // If incorrect, draw dashed line from Gok to nearest point on boundary/line
     if (!isMastered && result.nearestPoint) {
       const gokLatLng = [state.currentGok[0], state.currentGok[1]];
       const nearestLatLng = [result.nearestPoint[1], result.nearestPoint[0]];
@@ -842,12 +1131,12 @@
       }).addTo(map);
     }
 
-    // Camera framing: smoothly fit bounds to show both the gok and the full target polygon
+    // Camera framing: smoothly fit bounds to show both the gok and the target geometry
     const polyBounds = state.targetPolygonLayer.getBounds();
     const combinedBounds = polyBounds.extend([state.currentGok[0], state.currentGok[1]]);
     map.fitBounds(combinedBounds, {
       padding: [70, 70],
-      maxZoom: 13,
+      maxZoom: cat === 'gebouw' ? 14 : 13,
       animate: true,
       duration: 0.6
     });
@@ -856,7 +1145,7 @@
     const distStr = distanceKm.toLocaleString('nl-NL', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
     if (isMastered) {
       el.feedbackBox.className = 'feedback-box success';
-      if (result.inside || distanceKm === 0) {
+      if (isDirectHit || distanceKm === 0) {
         el.feedbackText.textContent = `Raak (0,0 km) · Beheerst`;
       } else {
         el.feedbackText.textContent = `Goed · ${distStr} km ernaast`;
@@ -912,13 +1201,25 @@
     el.styleNormalBtn.addEventListener('click', () => setBaseLayer('normal'));
     el.styleSatBtn.addEventListener('click', () => setBaseLayer('satellite'));
 
-    // Settings: Inhabitants presets
-    el.presetBtns.forEach(btn => {
-      btn.addEventListener('click', function () {
-        const inh = parseInt(this.getAttribute('data-inhabitants'), 10);
-        setMinInhabitants(inh);
+    // Settings: Category checkboxes & quick actions
+    if (el.categoryCheckboxes) {
+      el.categoryCheckboxes.forEach(cb => {
+        cb.addEventListener('change', handleCategoryToggle);
       });
-    });
+    }
+    if (el.btnCatAll) el.btnCatAll.addEventListener('click', selectAllCategories);
+    if (el.btnCatPlacesOnly) el.btnCatPlacesOnly.addEventListener('click', selectPlacesOnly);
+
+    // Settings: Per-category difficulty tier buttons
+    if (el.tierBtns) {
+      el.tierBtns.forEach(btn => {
+        btn.addEventListener('click', function () {
+          const catId = this.getAttribute('data-category-tier');
+          const tierVal = parseInt(this.getAttribute('data-tier'), 10);
+          setCategoryTier(catId, tierVal);
+        });
+      });
+    }
 
     // Settings: Province quick actions
     if (el.btnProvAll) el.btnProvAll.addEventListener('click', selectAllProvinces);
@@ -940,7 +1241,6 @@
 
     // Keyboard shortcuts
     window.addEventListener('keydown', function (e) {
-      // Don't trigger shortcuts if focus is inside an input
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
 
       if (e.code === 'Escape') {

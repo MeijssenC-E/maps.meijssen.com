@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "Topografie Trainer - Nederlandse woonplaatsen oefenen op een blinde kaart",
   "scripts": {
-    "generate-data": "python3 scripts/generate_dataset.py"
+    "generate-data": "python3 scripts/generate_dataset.py && python3 scripts/generate_extra_features.py",
+    "generate-extra-data": "python3 scripts/generate_extra_features.py"
   },
   "devDependencies": {
     "mapshaper": "^0.7.101"

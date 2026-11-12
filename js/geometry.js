@@ -48,7 +48,7 @@
   }
 
   /**
-   * Checks if point [lon, lat] is inside a GeoJSON Polygon or MultiPolygon geometry
+   * Checks if point [lon, lat] is inside a GeoJSON Polygon, MultiPolygon, or GeometryCollection
    */
   function isPointInGeometry(point, geometry) {
     if (!geometry) return false;
@@ -56,6 +56,8 @@
       return isPointInPolygon(point, geometry.coordinates);
     } else if (geometry.type === 'MultiPolygon') {
       return geometry.coordinates.some(polyCoords => isPointInPolygon(point, polyCoords));
+    } else if (geometry.type === 'GeometryCollection' && Array.isArray(geometry.geometries)) {
+      return geometry.geometries.some(g => isPointInGeometry(point, g));
     }
     return false;
   }
@@ -94,18 +96,29 @@
 
   /**
    * Calculates the shortest distance (Foutafstand) in kilometers from point [lon, lat]
-   * to the outer boundary of geometry.
-   * If point is inside the geometry, distance is 0 km.
+   * to the boundary or segments of geometry (Polygon, MultiPolygon, LineString, MultiLineString, Point).
+   * If point is inside a polygon geometry, distance is 0 km.
    * Returns {
    *   distanceKm: number,
+   *   rawDistanceKm: number,
    *   nearestPoint: [lon, lat],
    *   inside: boolean
    * }
    */
   function getDistanceToGeometry(point, geometry) {
+    if (!geometry) {
+      return {
+        distanceKm: 0,
+        rawDistanceKm: 0,
+        nearestPoint: [point[0], point[1]],
+        inside: false
+      };
+    }
+
     if (isPointInGeometry(point, geometry)) {
       return {
         distanceKm: 0,
+        rawDistanceKm: 0,
         nearestPoint: [point[0], point[1]],
         inside: true
       };
@@ -114,11 +127,18 @@
     let minDistance = Infinity;
     let nearestPoint = null;
 
-    const checkPolygonRings = (rings) => {
-      if (!rings || rings.length === 0) return;
-      const ring = rings[0]; // Measure distance to outer boundary
-      for (let i = 0; i < ring.length - 1; i++) {
-        const res = getClosestPointOnSegment(point, ring[i], ring[i + 1]);
+    const checkLineCoords = (coords) => {
+      if (!coords || coords.length === 0) return;
+      if (coords.length === 1) {
+        const res = getClosestPointOnSegment(point, coords[0], coords[0]);
+        if (res.dist < minDistance) {
+          minDistance = res.dist;
+          nearestPoint = res.point;
+        }
+        return;
+      }
+      for (let i = 0; i < coords.length - 1; i++) {
+        const res = getClosestPointOnSegment(point, coords[i], coords[i + 1]);
         if (res.dist < minDistance) {
           minDistance = res.dist;
           nearestPoint = res.point;
@@ -126,14 +146,41 @@
       }
     };
 
-    if (geometry.type === 'Polygon') {
-      checkPolygonRings(geometry.coordinates);
-    } else if (geometry.type === 'MultiPolygon') {
-      geometry.coordinates.forEach(rings => checkPolygonRings(rings));
+    const checkPolygonRings = (rings) => {
+      if (!rings || rings.length === 0) return;
+      for (let r = 0; r < rings.length; r++) {
+        checkLineCoords(rings[r]);
+      }
+    };
+
+    const inspectGeom = (geom) => {
+      if (!geom) return;
+      if (geom.type === 'Polygon') {
+        checkPolygonRings(geom.coordinates);
+      } else if (geom.type === 'MultiPolygon') {
+        geom.coordinates.forEach(rings => checkPolygonRings(rings));
+      } else if (geom.type === 'LineString') {
+        checkLineCoords(geom.coordinates);
+      } else if (geom.type === 'MultiLineString') {
+        geom.coordinates.forEach(line => checkLineCoords(line));
+      } else if (geom.type === 'Point') {
+        checkLineCoords([geom.coordinates]);
+      } else if (geom.type === 'MultiPoint') {
+        geom.coordinates.forEach(pt => checkLineCoords([pt]));
+      } else if (geom.type === 'GeometryCollection' && Array.isArray(geom.geometries)) {
+        geom.geometries.forEach(g => inspectGeom(g));
+      }
+    };
+
+    inspectGeom(geometry);
+
+    if (!Number.isFinite(minDistance)) {
+      minDistance = 0;
     }
 
     return {
       distanceKm: Math.round(minDistance * 10) / 10,
+      rawDistanceKm: minDistance,
       nearestPoint: nearestPoint || point,
       inside: false
     };
