@@ -49,6 +49,7 @@
     gokMarker: null,              // Leaflet marker for Gok
     targetPolygonLayer: null,     // Leaflet GeoJSON layer for showing target polygon
     feedbackLineLayer: null,      // Leaflet polyline for dashed distance line
+    feedbackLabelLayer: null,     // Leaflet marker for distance label on midpoint
     activeBaseLayer: 'normal',    // 'normal' | 'satellite'
     isFeedbackPhase: false        // true when showing results before 'Volgende' is clicked
   };
@@ -90,6 +91,7 @@
     targetName: document.getElementById('target-name'),
     targetProvince: document.getElementById('target-province'),
     targetDetails: document.getElementById('target-details'),
+    promptSubRow: document.getElementById('prompt-sub-row'),
     masteredCount: document.getElementById('mastered-count'),
     poolTotal: document.getElementById('pool-total'),
     progressFill: document.getElementById('progress-fill'),
@@ -610,7 +612,7 @@
     state.isCompletionModalOpen = true;
     const total = state.currentFilteredFeatures.length;
     if (el.completionMessage) {
-      el.completionMessage.innerHTML = `Je hebt alle <strong>${total}</strong> woonplaatsen in deze selectie <strong>Beheerst</strong>!<br>Alle gokken vielen binnen de polygoon of binnen de 3 km tolerantiegrens.`;
+      el.completionMessage.innerHTML = `Je hebt alle <strong>${total}</strong> woonplaatsen in deze selectie <strong>Beheerst</strong>.<br>Alle gokken vielen binnen de polygoon of binnen de 3 km tolerantiegrens.`;
     }
     el.completionModal.hidden = false;
     el.completionModal.classList.add('active');
@@ -682,15 +684,22 @@
       map.removeLayer(state.feedbackLineLayer);
       state.feedbackLineLayer = null;
     }
+    if (state.feedbackLabelLayer) {
+      map.removeLayer(state.feedbackLabelLayer);
+      state.feedbackLabelLayer = null;
+    }
 
     state.currentGok = null;
 
-    // Hide feedback box
+    // Hide progress & feedback row before OK is clicked
+    if (el.promptSubRow) el.promptSubRow.hidden = true;
     el.feedbackBox.className = 'feedback-box';
     el.feedbackBox.style.display = 'none';
 
-    // Button states
+    // Button states: show OK (disabled until pin placed), hide Volgende
+    el.btnNext.hidden = true;
     el.btnNext.style.display = 'none';
+    el.btnOk.hidden = false;
     el.btnOk.style.display = 'inline-flex';
     el.btnOk.disabled = true;
 
@@ -705,10 +714,11 @@
 
     // Check if all places in current filter are mastered
     if (state.questionPool.length === 0) {
-      el.targetName.textContent = 'Selectie voltooid! 🏆';
+      el.targetName.textContent = 'Selectie voltooid';
       el.targetProvince.textContent = '100% Beheerst';
       el.targetDetails.textContent = 'Alle woonplaatsen in deze selectie zijn beheerst. Open het instellingenmenu voor een nieuwe selectie.';
       el.targetDetails.hidden = false;
+      if (el.promptSubRow) el.promptSubRow.hidden = false;
       showCompletionModal();
       return;
     }
@@ -734,11 +744,17 @@
 
     state.isFeedbackPhase = true;
 
+    // Switch buttons immediately: hide OK, show Volgende
+    el.btnOk.hidden = true;
+    el.btnOk.style.display = 'none';
+    el.btnNext.hidden = false;
+    el.btnNext.style.display = 'inline-flex';
+
     // Reveal provincie, gemeente and inwoners after OK is clicked
     const p = state.currentTarget.properties;
     const formattedInhabitants = (p.inwoners || 0).toLocaleString('nl-NL');
-    const provText = p.provincie ? `${p.provincie} • ` : '';
-    el.targetDetails.textContent = `${provText}Gemeente ${p.gemeente || p.naam} • ${formattedInhabitants} inwoners`;
+    const provText = p.provincie ? `${p.provincie} · ` : '';
+    el.targetDetails.textContent = `${provText}Gemeente ${p.gemeente || p.naam} · ${formattedInhabitants} inwoners`;
     el.targetDetails.hidden = false;
 
     // Prevent dragging marker while showing feedback
@@ -775,7 +791,7 @@
 
       state.feedbackLineLayer = L.polyline([gokLatLng, nearestLatLng], {
         color: '#dc2626',
-        weight: 3,
+        weight: 2.5,
         dashArray: '6, 8',
         opacity: 0.85
       }).addTo(map);
@@ -785,15 +801,15 @@
       const midLng = (gokLatLng[1] + nearestLatLng[1]) / 2;
       const distFormatted = distanceKm.toLocaleString('nl-NL', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
-      const distMarker = L.marker([midLat, midLng], {
+      state.feedbackLabelLayer = L.marker([midLat, midLng], {
+        interactive: false,
         icon: L.divIcon({
           className: 'dist-label-icon',
           html: `<span class="distance-pill-tooltip">${distFormatted} km</span>`,
           iconSize: [80, 24],
           iconAnchor: [40, 12]
         })
-      });
-      state.feedbackLineLayer.addLayer(distMarker);
+      }).addTo(map);
     }
 
     // Camera framing: smoothly fit bounds to show both the gok and the full target polygon
@@ -806,14 +822,14 @@
       duration: 0.6
     });
 
-    // Update feedback box
+    // Update feedback box & reveal progress row
     const distStr = distanceKm.toLocaleString('nl-NL', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
     if (isMastered) {
       el.feedbackBox.className = 'feedback-box success';
       if (result.inside || distanceKm === 0) {
-        el.feedbackText.textContent = `🎯 Precies raak! (0,0 km). Woonplaats beheerst!`;
+        el.feedbackText.textContent = `Raak (0,0 km) · Beheerst`;
       } else {
-        el.feedbackText.textContent = `✓ Goed! Slechts ${distStr} km van de grens (toegestaan: ≤ 3 km).`;
+        el.feedbackText.textContent = `Goed · ${distStr} km van grens`;
       }
 
       // Mark as mastered and persist in localStorage
@@ -827,13 +843,11 @@
       updateSettingsStatsUI();
     } else {
       el.feedbackBox.className = 'feedback-box incorrect';
-      el.feedbackText.textContent = `✗ Helaas! Foutafstand: ${distStr} km van de grens. Blijft in de vraagpool.`;
+      el.feedbackText.textContent = `${distStr} km van grens`;
     }
     el.feedbackBox.style.display = 'flex';
+    if (el.promptSubRow) el.promptSubRow.hidden = false;
 
-    // Switch buttons: hide OK, show Volgende
-    el.btnOk.style.display = 'none';
-    el.btnNext.style.display = 'inline-flex';
     el.btnNext.focus();
   }
 

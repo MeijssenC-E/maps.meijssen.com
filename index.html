@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Topografie Trainer - maps.meijssen.com</title>
   <meta name="description" content="Oefen Nederlandse woonplaatsen op een blinde kaart met automatische polygoon- en afstandsberekening.">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%22%22><text y=%2226%22 font-size=%2226%22>🗺️</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%232563eb%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22><polygon points=%221 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6%22/><line x1=%228%22 y1=%222%22 x2=%228%22 y2=%2218%22/><line x1=%2216%22 y1=%226%22 x2=%2216%22 y2=%2222%22/></svg>">
   
   <!-- Leaflet & MapLibre CSS -->
   <link rel="stylesheet" href="vendor/leaflet.css">
@@ -18,7 +18,17 @@
     <!-- Top-left controls: Settings toggle button -->
     <div class="top-left-controls">
       <button id="btn-settings-toggle" class="settings-toggle-btn" aria-label="Instellingen openen" aria-expanded="false" title="Instellingen (kaartstijl, inwoners, provincies, voortgang)">
-        <span class="settings-toggle-icon">⚙️</span>
+        <svg class="icon-svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="4" y1="21" x2="4" y2="14"></line>
+          <line x1="4" y1="10" x2="4" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="12"></line>
+          <line x1="12" y1="8" x2="12" y2="3"></line>
+          <line x1="20" y1="21" x2="20" y2="16"></line>
+          <line x1="20" y1="12" x2="20" y2="3"></line>
+          <line x1="1" y1="14" x2="7" y2="14"></line>
+          <line x1="9" y1="8" x2="15" y2="8"></line>
+          <line x1="17" y1="16" x2="23" y2="16"></line>
+        </svg>
         <span class="settings-toggle-text">Instellingen</span>
       </button>
     </div>
@@ -28,10 +38,14 @@
     <div id="settings-panel" class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-heading" hidden>
       <div class="settings-header">
         <div class="settings-title-wrap">
-          <span class="settings-icon">⚙️</span>
           <h2 id="settings-heading" class="settings-title">Instellingen</h2>
         </div>
-        <button id="btn-settings-close" class="btn-icon-close" aria-label="Instellingen sluiten" title="Sluiten (Escape)">✕</button>
+        <button id="btn-settings-close" class="btn-icon-close" aria-label="Instellingen sluiten" title="Sluiten (Escape)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
       </div>
 
       <div class="settings-content">
@@ -40,10 +54,10 @@
           <div class="section-label">Kaartstijl (blinde kaart)</div>
           <div class="segmented-control" role="radiogroup" aria-label="Kaartstijl selectie">
             <button type="button" class="segment-btn active" data-style="normal" role="radio" aria-checked="true">
-              <span>🗺️</span> Normaal
+              Normaal
             </button>
             <button type="button" class="segment-btn" data-style="satellite" role="radio" aria-checked="false">
-              <span>🛰️</span> Satelliet
+              Satelliet
             </button>
           </div>
         </section>
@@ -80,7 +94,7 @@
             <span class="section-label">Provincies</span>
             <div class="province-quick-actions">
               <button type="button" id="btn-prov-all" class="link-btn">Heel Nederland</button>
-              <span class="link-sep">•</span>
+              <span class="link-sep">/</span>
               <button type="button" id="btn-prov-clear" class="link-btn">Geen</button>
             </div>
           </div>
@@ -91,19 +105,19 @@
 
         <!-- Voortgang & LocalStorage Section -->
         <section class="settings-section settings-section-progress">
-          <div class="section-label">Voortgang &amp; Opslag (localStorage)</div>
+          <div class="section-label">Voortgang &amp; Opslag</div>
           <div class="storage-stats-card">
             <div class="stat-row">
               <span class="stat-text">Beheerst in huidige filter:</span>
               <span class="stat-num"><strong id="stats-current-mastered">0</strong> / <span id="stats-current-total">334</span> (<span id="stats-current-pct">0%</span>)</span>
             </div>
             <div class="stat-row">
-              <span class="stat-text">Totaal beheerst in heel Nederland:</span>
+              <span class="stat-text">Totaal beheerst in Nederland:</span>
               <span class="stat-num"><strong id="stats-total-mastered">0</strong> / 2.503</span>
             </div>
           </div>
           <button type="button" id="btn-reset-progress" class="btn btn-warning-outline btn-block">
-            <span>🔄</span> Voortgang resetten...
+            Voortgang resetten
           </button>
         </section>
       </div>
@@ -112,10 +126,10 @@
     <!-- Kaartlaag schakelaar (Top-right) -->
     <div class="map-style-toggle" role="group" aria-label="Kaartstijl selectie">
       <button id="style-normal" class="style-btn active" title="Blinde kaart zonder labels">
-        <span>🗺️</span> Normaal
+        Normaal
       </button>
       <button id="style-sat" class="style-btn" title="Blinde satelliet-luchtfoto zonder labels">
-        <span>🛰️</span> Satelliet
+        Satelliet
       </button>
     </div>
 
@@ -125,10 +139,6 @@
         <!-- Main row: Target name & Action buttons -->
         <div class="prompt-main-row">
           <div class="target-container">
-            <div class="target-eyebrow">
-              <span class="pulse-dot"></span>
-              <span>Wijs aan op de kaart:</span>
-            </div>
             <div class="target-title-wrap">
               <span id="target-name" class="target-name">Laden...</span>
               <span id="target-province" class="target-badge">plaats</span>
@@ -140,24 +150,24 @@
             <!-- OK Button (active when pin is placed) -->
             <button id="btn-ok" class="btn btn-primary" disabled title="Bevestig je gok (Enter)">
               <span>OK</span>
-              <span class="kbd-shortcut">↵ Enter</span>
+              <span class="kbd-shortcut">Enter</span>
             </button>
             <!-- Volgende Button (active after feedback) -->
-            <button id="btn-next" class="btn btn-next" style="display: none;" title="Volgende vraag (Spatie / Enter)">
+            <button id="btn-next" class="btn btn-next" hidden title="Volgende vraag (Spatie / Enter)">
               <span>Volgende</span>
               <span class="kbd-shortcut">Spatie</span>
             </button>
           </div>
         </div>
 
-        <!-- Secondary row: Progress counter & Feedback indicator -->
-        <div class="prompt-sub-row">
+        <!-- Secondary row: Progress counter & Feedback indicator (shown only after OK) -->
+        <div id="prompt-sub-row" class="prompt-sub-row" hidden>
           <div class="progress-info">
-            <span>Voortgang:</span>
+            <span>Voortgang</span>
             <div class="progress-bar-track">
               <div id="progress-fill" class="progress-bar-fill"></div>
             </div>
-            <span><strong id="mastered-count">0</strong> / <span id="pool-total">334</span> beheerst</span>
+            <span><strong id="mastered-count">0</strong> / <span id="pool-total">334</span></span>
           </div>
 
           <!-- Dynamic feedback banner -->
@@ -174,13 +184,12 @@
     <!-- Reset Progress Confirmation Modal -->
     <div id="reset-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="reset-modal-title" hidden>
       <div class="modal-card">
-        <div class="modal-icon">⚠️</div>
-        <h2 id="reset-modal-title" class="modal-title">Voortgang resetten?</h2>
+        <h2 id="reset-modal-title" class="modal-title">Voortgang resetten</h2>
         <p class="modal-text">
-          Weet je zeker dat je alle beheerste woonplaatsen wilt wissen? Deze actie verwijdert je opgeslagen voortgang uit de browser (<code>localStorage</code>) en zet de teller weer op 0.
+          Weet je zeker dat je alle beheerste woonplaatsen wilt wissen? Dit verwijdert je opgeslagen voortgang uit de browser en zet de teller op 0.
         </p>
         <div class="modal-actions">
-          <button id="btn-confirm-reset" class="btn btn-danger">Ja, reset voortgang</button>
+          <button id="btn-confirm-reset" class="btn btn-danger">Reset voortgang</button>
           <button id="btn-cancel-reset" class="btn btn-secondary">Annuleren</button>
         </div>
       </div>
@@ -189,10 +198,9 @@
     <!-- Completion Celebration Modal -->
     <div id="completion-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="completion-title" hidden>
       <div class="modal-card">
-        <div class="modal-icon">🏆</div>
-        <h2 id="completion-title" class="modal-title">Gefeliciteerd!</h2>
+        <h2 id="completion-title" class="modal-title">Selectie voltooid</h2>
         <p id="completion-message" class="modal-text">
-          Je hebt alle woonplaatsen in deze selectie <strong>Beheerst</strong>!
+          Je hebt alle woonplaatsen in deze selectie <strong>Beheerst</strong>.
           Alle gokken vielen binnen de polygoon of binnen de 3 km tolerantiegrens.
         </p>
         <div class="modal-actions">
