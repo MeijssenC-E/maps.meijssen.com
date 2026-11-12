@@ -1,0 +1,28 @@
+{
+  "total_woonplaatsen": 2503,
+  "presets": {
+    "> 50.000 (Grote steden)": 55,
+    "> 10.000 (Middelgrote steden - standaard)": 334,
+    "> 2.500 (Kernen en dorpen)": 897,
+    "> 0 (Alle woonplaatsen)": 2503
+  },
+  "per_provincie": {
+    "Drenthe": 227,
+    "Flevoland": 19,
+    "Fryslân": 419,
+    "Gelderland": 335,
+    "Groningen": 199,
+    "Limburg": 190,
+    "Noord-Brabant": 279,
+    "Noord-Holland": 239,
+    "Overijssel": 180,
+    "Utrecht": 104,
+    "Zeeland": 127,
+    "Zuid-Holland": 185
+  },
+  "bestandsgroottes": {
+    "geojson_ongecomprimeerd_mb": 71.51,
+    "topojson_ongecomprimeerd_kb": 1041.5,
+    "topojson_gzipped_kb": 281.5
+  }
+}

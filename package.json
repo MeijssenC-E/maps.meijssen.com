@@ -1,0 +1,12 @@
+{
+  "name": "maps.meijssen.com",
+  "version": "1.0.0",
+  "description": "Topografie Trainer - Nederlandse woonplaatsen oefenen op een blinde kaart",
+  "scripts": {
+    "generate-data": "python3 scripts/generate_dataset.py"
+  },
+  "devDependencies": {
+    "mapshaper": "^0.7.101"
+  },
+  "license": "MIT"
+}

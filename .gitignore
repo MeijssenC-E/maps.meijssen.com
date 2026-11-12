@@ -1,0 +1,4 @@
+node_modules/
+data/*.geojson
+data/*.gz
+.DS_Store
