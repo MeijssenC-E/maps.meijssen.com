@@ -69,6 +69,11 @@ html, body {
   background-color: #e5e7eb;
 }
 
+.leaflet-gl-layer,
+.leaflet-gl-layer canvas {
+  pointer-events: none !important;
+}
+
 /* --------------------------------------------------------------------------
    Top Prompt Bar (Opdrachtbalk)
    -------------------------------------------------------------------------- */
@@ -78,7 +83,7 @@ html, body {
   left: 50%;
   transform: translateX(-50%);
   z-index: 1000;
-  width: min(94%, 720px);
+  width: min(calc(100% - 380px), 680px);
   pointer-events: none; /* children enable pointer events */
 }
 
@@ -301,13 +306,13 @@ html, body {
 }
 
 /* --------------------------------------------------------------------------
-   Top Left Controls: Settings Toggle & App Brand Badge
+   Top Left Controls: Settings Toggle
    -------------------------------------------------------------------------- */
 .top-left-controls {
   position: absolute;
   top: 16px;
   left: 16px;
-  z-index: 1000;
+  z-index: 1010;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -347,49 +352,6 @@ html, body {
 
 .settings-toggle-icon {
   font-size: 15px;
-}
-
-.app-brand {
-  position: static;
-  background: var(--bg-surface-trans);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
-  padding: 8px 14px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  text-decoration: none;
-  color: var(--text-main);
-  transition: all 0.18s ease;
-}
-
-.app-brand:hover {
-  background: #ffffff;
-  box-shadow: var(--shadow-lg);
-}
-
-.app-brand-icon {
-  font-size: 16px;
-}
-
-.app-brand-title {
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: -0.01em;
-}
-
-.app-brand-tag {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--primary);
-  background: var(--primary-light);
-  padding: 2px 6px;
-  border-radius: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
 /* --------------------------------------------------------------------------
@@ -937,32 +899,38 @@ html, body {
 /* --------------------------------------------------------------------------
    Responsive Adjustments
    -------------------------------------------------------------------------- */
-@media (max-width: 640px) {
+@media (max-width: 960px) {
   .top-left-controls {
     top: 8px;
     left: 8px;
     gap: 6px;
   }
 
-  .settings-toggle-btn {
-    padding: 7px 10px;
-    font-size: 12px;
+  .map-style-toggle {
+    top: 8px;
+    right: 8px;
+    z-index: 1010;
   }
 
-  .settings-toggle-text {
-    display: none; /* Icon only on narrow mobile screens to save header space */
-  }
-
-  .app-brand {
-    display: none; /* Hide brand badge on small phones to maximize map space */
+  .top-header-bar {
+    top: 50px;
+    width: calc(100% - 16px);
+    max-width: 680px;
   }
 
   .settings-panel {
-    top: 52px;
+    top: 50px;
     left: 8px;
     right: 8px;
     width: auto;
-    max-height: calc(100vh - 68px);
+    max-height: calc(100vh - 66px);
+  }
+}
+
+@media (max-width: 640px) {
+  .settings-toggle-btn {
+    padding: 7px 12px;
+    font-size: 12px;
   }
 
   .preset-grid {
@@ -974,11 +942,6 @@ html, body {
     max-height: 140px;
   }
 
-  .top-header-bar {
-    top: 8px;
-    width: 96%;
-  }
-
   .prompt-card {
     padding: 12px 14px;
     gap: 8px;
@@ -986,12 +949,6 @@ html, body {
 
   .target-name {
     font-size: 20px;
-  }
-
-  .map-style-toggle {
-    top: auto;
-    bottom: 24px;
-    right: 12px;
   }
 
   .action-controls .btn {

@@ -178,37 +178,47 @@
     const defaultCenter = [52.1326, 5.2913];
     const defaultZoom = 8;
 
+    // Bounding box covering the Netherlands, North Sea, and surrounding countries (BE, LU, DE, FR, UK)
+    const regionBounds = L.latLngBounds([48.5, -1.0], [56.0, 11.5]);
+
     map = L.map('map', {
       center: defaultCenter,
       zoom: defaultZoom,
-      minZoom: 7,
+      minZoom: 6,
       maxZoom: 18,
+      maxBounds: regionBounds,
+      maxBoundsViscosity: 0.85,
       zoomControl: false
     });
 
     // Zoom control at bottom-right
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-    // CartoDB Positron No Labels (Normal blind map)
-    normalTileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
-      subdomains: 'abcd',
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>'
-    });
+    // CartoDB Positron No Labels via Vector GL (works without API key and covers NL + surrounding countries/sea)
+    if (typeof L.maplibreGL === 'function' && typeof maplibregl !== 'undefined') {
+      normalTileLayer = L.maplibreGL({
+        style: 'https://basemaps.cartocdn.com/gl/positron-nolabels-gl-style/style.json',
+        interactive: false
+      });
+      if (map.attributionControl) {
+        map.attributionControl.addAttribution(
+          '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>'
+        );
+      }
+    } else {
+      normalTileLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        attribution: 'Tiles &copy; Esri'
+      });
+    }
 
-    // PDOK Luchtfoto Actueel Ortho 25cm (Blind Satellite layer)
-    const pdokSatLayer = L.tileLayer('https://service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0/Actueel_ortho25/EPSG:3857/{z}/{x}/{y}.jpeg', {
-      maxZoom: 19,
-      attribution: 'Kaartgegevens &copy; <a href="https://www.pdok.nl" target="_blank" rel="noopener">PDOK</a> / Beeldmateriaal.nl'
-    });
-
-    // Esri World Imagery fallback for international context
+    // Esri World Imagery (Blind Satellite layer covering NL, sea, and surrounding countries without white border cutoff)
     const esriWorldLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       maxZoom: 19,
-      attribution: 'Tiles &copy; Esri'
+      attribution: 'Kaartgegevens &copy; Esri, Maxar, Earthstar Geographics, Beeldmateriaal.nl'
     });
 
-    satelliteTileLayers = [esriWorldLayer, pdokSatLayer];
+    satelliteTileLayers = [esriWorldLayer];
 
     // Apply initial base layer from loaded settings
     if (state.settings.baseLayer === 'satellite') {
@@ -647,8 +657,9 @@
     } catch (err) {
       console.error('Fout bij het laden van dataset:', err);
       el.targetName.textContent = 'Fout bij inladen';
-      el.targetProvince.textContent = err.message;
+      el.targetProvince.textContent = 'fout';
       el.targetDetails.textContent = 'Controleer netwerkverbinding of data/woonplaatsen.topo.json';
+      el.targetDetails.hidden = false;
     }
   }
 
@@ -688,6 +699,7 @@
       el.targetName.textContent = 'Geen woonplaatsen';
       el.targetProvince.textContent = 'Filter leeg';
       el.targetDetails.textContent = 'Geen woonplaatsen gevonden voor deze selectie. Wijzig inwoners of provincies in Instellingen.';
+      el.targetDetails.hidden = false;
       return;
     }
 
@@ -696,6 +708,7 @@
       el.targetName.textContent = 'Selectie voltooid! 🏆';
       el.targetProvince.textContent = '100% Beheerst';
       el.targetDetails.textContent = 'Alle woonplaatsen in deze selectie zijn beheerst. Open het instellingenmenu voor een nieuwe selectie.';
+      el.targetDetails.hidden = false;
       showCompletionModal();
       return;
     }
@@ -706,10 +719,11 @@
 
     const p = state.currentTarget.properties;
     el.targetName.textContent = p.naam;
-    el.targetProvince.textContent = p.provincie || 'Nederland';
+    el.targetProvince.textContent = p.categorie || 'plaats';
 
-    const formattedInhabitants = (p.inwoners || 0).toLocaleString('nl-NL');
-    el.targetDetails.textContent = `Gemeente ${p.gemeente || p.naam} • ${formattedInhabitants} inwoners`;
+    // Hide provincie, gemeente and inwoners before OK is clicked
+    el.targetDetails.textContent = '';
+    el.targetDetails.hidden = true;
   }
 
   /**
@@ -719,6 +733,13 @@
     if (!state.currentGok || !state.currentTarget || state.isFeedbackPhase) return;
 
     state.isFeedbackPhase = true;
+
+    // Reveal provincie, gemeente and inwoners after OK is clicked
+    const p = state.currentTarget.properties;
+    const formattedInhabitants = (p.inwoners || 0).toLocaleString('nl-NL');
+    const provText = p.provincie ? `${p.provincie} • ` : '';
+    el.targetDetails.textContent = `${provText}Gemeente ${p.gemeente || p.naam} • ${formattedInhabitants} inwoners`;
+    el.targetDetails.hidden = false;
 
     // Prevent dragging marker while showing feedback
     if (state.gokMarker && state.gokMarker.dragging) {

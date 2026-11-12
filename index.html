@@ -7,24 +7,20 @@
   <meta name="description" content="Oefen Nederlandse woonplaatsen op een blinde kaart met automatische polygoon- en afstandsberekening.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%22%22><text y=%2226%22 font-size=%2226%22>🗺️</text></svg>">
   
-  <!-- Leaflet CSS -->
+  <!-- Leaflet & MapLibre CSS -->
   <link rel="stylesheet" href="vendor/leaflet.css">
+  <link rel="stylesheet" href="vendor/maplibre-gl.css">
   <!-- Custom Application Styling -->
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <div id="app-container">
-    <!-- Top-left controls: Settings toggle button & Brand badge -->
+    <!-- Top-left controls: Settings toggle button -->
     <div class="top-left-controls">
       <button id="btn-settings-toggle" class="settings-toggle-btn" aria-label="Instellingen openen" aria-expanded="false" title="Instellingen (kaartstijl, inwoners, provincies, voortgang)">
         <span class="settings-toggle-icon">⚙️</span>
         <span class="settings-toggle-text">Instellingen</span>
       </button>
-      <a href="#" class="app-brand" title="Topografie Trainer v1">
-        <span class="app-brand-icon">🗺️</span>
-        <span class="app-brand-title">maps.meijssen.com</span>
-        <span class="app-brand-tag">v1</span>
-      </a>
     </div>
 
     <!-- Settings Panel (Dropdown/Flyout from top-left) -->
@@ -131,13 +127,13 @@
           <div class="target-container">
             <div class="target-eyebrow">
               <span class="pulse-dot"></span>
-              <span>Wijs de woonplaats aan op de kaart:</span>
+              <span>Wijs aan op de kaart:</span>
             </div>
             <div class="target-title-wrap">
               <span id="target-name" class="target-name">Laden...</span>
-              <span id="target-province" class="target-badge">Nederland</span>
+              <span id="target-province" class="target-badge">plaats</span>
             </div>
-            <div id="target-details" class="target-hint">Even geduld, dataset wordt ingeladen...</div>
+            <div id="target-details" class="target-hint" hidden></div>
           </div>
 
           <div class="action-controls">
@@ -213,6 +209,8 @@
 
   <!-- Vendor dependencies -->
   <script src="vendor/leaflet.js"></script>
+  <script src="vendor/maplibre-gl.js"></script>
+  <script src="vendor/leaflet-maplibre-gl.js"></script>
   <script src="vendor/topojson-client.min.js"></script>
   <!-- Geodesic distance & Point-in-polygon math module -->
   <script src="js/geometry.js"></script>
