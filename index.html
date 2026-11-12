@@ -191,12 +191,23 @@
                   <input type="checkbox" class="category-checkbox" data-category="gebouw">
                   <span class="category-name">Belangrijke gebouwen</span>
                 </label>
-                <span class="category-count-badge" data-category-count="gebouw">0</span>
+                <span class="category-count-badge" data-category-count="gebouw">0 / 0</span>
               </div>
               <div class="category-tier-row" role="radiogroup" aria-label="Moeilijkheidsgraad Belangrijke gebouwen">
                 <button type="button" class="tier-btn" data-category-tier="gebouw" data-tier="1" title="De bekendste nationale iconen en bouwwerken">Top-iconen</button>
                 <button type="button" class="tier-btn active" data-category-tier="gebouw" data-tier="2" title="Bekende monumenten, musea, stadions en waterwerken">Bekend</button>
                 <button type="button" class="tier-btn" data-category-tier="gebouw" data-tier="3" title="Uitgebreide selectie van bouwwerken en monumenten">Uitgebreid</button>
+              </div>
+            </div>
+
+            <!-- Roeiverenigingen -->
+            <div class="category-card" data-category-card="roeivereniging">
+              <div class="category-card-header">
+                <label class="category-toggle-label">
+                  <input type="checkbox" class="category-checkbox" data-category="roeivereniging">
+                  <span class="category-name">Roeiverenigingen</span>
+                </label>
+                <span class="category-count-badge" data-category-count="roeivereniging">0 / 0</span>
               </div>
             </div>
           </div>
@@ -229,6 +240,7 @@
               <span class="stat-text">Totaal beheerst in Nederland:</span>
               <span class="stat-num"><strong id="stats-total-mastered">0</strong> / <span id="stats-grand-total">2.503</span></span>
             </div>
+            <div id="stats-category-breakdown" class="stats-category-breakdown"></div>
           </div>
           <button type="button" id="btn-reset-progress" class="btn btn-warning-outline btn-block">
             Voortgang resetten

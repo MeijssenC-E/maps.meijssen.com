@@ -22,6 +22,22 @@
     'Zuid-Holland'
   ];
 
+  // Bounding boxes [[south, west], [north, east]] per province for camera reset
+  const PROVINCE_BOUNDS = {
+    'Drenthe': [[52.61, 6.11], [53.20, 7.09]],
+    'Flevoland': [[52.25, 5.12], [52.85, 6.01]],
+    'Fryslân': [[52.80, 4.85], [53.52, 6.43]],
+    'Gelderland': [[51.73, 4.99], [52.52, 6.84]],
+    'Groningen': [[52.84, 6.18], [53.56, 7.23]],
+    'Limburg': [[50.75, 5.56], [51.78, 6.23]],
+    'Noord-Brabant': [[51.22, 4.19], [51.84, 6.05]],
+    'Noord-Holland': [[52.16, 4.49], [53.19, 5.33]],
+    'Overijssel': [[52.11, 5.78], [52.86, 7.07]],
+    'Utrecht': [[51.93, 4.79], [52.31, 5.65]],
+    'Zeeland': [[51.20, 3.35], [51.76, 4.28]],
+    'Zuid-Holland': [[51.65, 3.83], [52.33, 5.19]]
+  };
+
   // Supported GeoFeature categories
   const CATEGORIES = [
     { id: 'plaats', badge: 'plaats', label: 'Woonplaatsen', defaultTier: 2 },
@@ -30,7 +46,8 @@
     { id: 'kanaal', badge: 'kanaal', label: 'Kanalen', defaultTier: 2 },
     { id: 'meer', badge: 'meer / water', label: 'Meren & Wateren', defaultTier: 2 },
     { id: 'natuurgebied', badge: 'natuurgebied', label: 'Natuurgebieden', defaultTier: 2 },
-    { id: 'gebouw', badge: 'gebouw', label: 'Belangrijke gebouwen', defaultTier: 2 }
+    { id: 'gebouw', badge: 'gebouw', label: 'Belangrijke gebouwen', defaultTier: 2 },
+    { id: 'roeivereniging', badge: 'roeivereniging', label: 'Roeiverenigingen', defaultTier: 1 }
   ];
 
   const CATEGORY_MAP = Object.fromEntries(CATEGORIES.map(c => [c.id, c]));
@@ -48,7 +65,8 @@
     kanaal: 2,        // 1: hoofdkanalen, 2: regionaal, 3: alle kanalen
     meer: 2,          // 1: grote wateren, 2: middelgroot, 3: alle meren
     natuurgebied: 2,  // 1: Nat. Parken, 2: Groot N2000, 3: Alle natuur
-    gebouw: 2         // 1: Top-iconen, 2: Bekend, 3: Uitgebreid
+    gebouw: 2,        // 1: Top-iconen, 2: Bekend, 3: Uitgebreid
+    roeivereniging: 1 // Alle roeiverenigingen
   };
 
   const DEFAULT_SETTINGS = {
@@ -117,6 +135,7 @@
     statsCurrentPct: document.getElementById('stats-current-pct'),
     statsTotalMastered: document.getElementById('stats-total-mastered'),
     statsGrandTotal: document.getElementById('stats-grand-total'),
+    statsCategoryBreakdown: document.getElementById('stats-category-breakdown'),
     btnResetProgress: document.getElementById('btn-reset-progress'),
 
     // Top-right quick layer switch
@@ -310,6 +329,42 @@
   }
 
   /**
+   * Reset map camera to Heel Nederland or to the currently selected province(s)
+   */
+  function resetMapViewForActiveFilter() {
+    if (!map) return;
+    const selProvs = (state.settings.provinces || []).filter(p => PROVINCE_BOUNDS[p]);
+
+    if (selProvs.length > 0 && selProvs.length < PROVINCES.length) {
+      let minLat = 90, minLng = 180, maxLat = -90, maxLng = -180;
+      selProvs.forEach(prov => {
+        const b = PROVINCE_BOUNDS[prov];
+        if (b) {
+          if (b[0][0] < minLat) minLat = b[0][0];
+          if (b[0][1] < minLng) minLng = b[0][1];
+          if (b[1][0] > maxLat) maxLat = b[1][0];
+          if (b[1][1] > maxLng) maxLng = b[1][1];
+        }
+      });
+      if (minLat < maxLat && minLng < maxLng) {
+        map.fitBounds([[minLat, minLng], [maxLat, maxLng]], {
+          padding: [40, 40],
+          maxZoom: 10,
+          animate: true,
+          duration: 0.5
+        });
+        return;
+      }
+    }
+
+    // Default: Heel Nederland
+    map.setView([52.1326, 5.2913], 8, {
+      animate: true,
+      duration: 0.5
+    });
+  }
+
+  /**
    * Update layer toggle button active states in both top-right and settings panel
    */
   function updateLayerToggleUI(type) {
@@ -446,6 +501,7 @@
    */
   function matchesCategoryTier(f) {
     const cat = getFeatureCategory(f);
+    if (cat === 'roeivereniging') return true;
     const selectedTier = (state.settings.categoryTiers && state.settings.categoryTiers[cat]) || 2;
     const featTier = getFeatureTier(f);
     return featTier <= selectedTier;
@@ -498,17 +554,34 @@
   }
 
   /**
-   * Update category cards, checkboxes, tier buttons, and per-category counts
+   * Update category cards, checkboxes, tier buttons, and per-category progress counts
    */
   function updateCategoriesUI() {
     const activeCats = new Set(state.settings.categories || []);
     const countsByCat = {};
-    CATEGORIES.forEach(c => { countsByCat[c.id] = 0; });
+    const masteredByCat = {};
+    const totalAllByCat = {};
+    const masteredAllByCat = {};
+
+    CATEGORIES.forEach(c => {
+      countsByCat[c.id] = 0;
+      masteredByCat[c.id] = 0;
+      totalAllByCat[c.id] = 0;
+      masteredAllByCat[c.id] = 0;
+    });
 
     state.allFeatures.forEach(f => {
       const cat = getFeatureCategory(f);
-      if (countsByCat[cat] !== undefined && matchesCategoryTier(f) && matchesProvinceFilter(f)) {
+      if (countsByCat[cat] === undefined) return;
+      const code = String(f.properties.code || f.properties.id);
+      const isMastered = state.masteredCodes.has(code);
+
+      totalAllByCat[cat]++;
+      if (isMastered) masteredAllByCat[cat]++;
+
+      if (matchesCategoryTier(f) && matchesProvinceFilter(f)) {
         countsByCat[cat]++;
+        if (isMastered) masteredByCat[cat]++;
       }
     });
 
@@ -526,7 +599,8 @@
 
       const badge = document.querySelector(`[data-category-count="${c.id}"]`);
       if (badge) {
-        badge.textContent = countsByCat[c.id];
+        badge.textContent = `${masteredByCat[c.id]} / ${countsByCat[c.id]}`;
+        badge.title = `${masteredByCat[c.id]} van ${countsByCat[c.id]} beheerst in deze selectie`;
       }
 
       const activeTier = (state.settings.categoryTiers && state.settings.categoryTiers[c.id]) || c.defaultTier;
@@ -538,6 +612,27 @@
         btn.setAttribute('aria-checked', isCurrent ? 'true' : 'false');
       });
     });
+
+    // Render per-category progress breakdown inside Voortgang & Opslag section
+    if (el.statsCategoryBreakdown) {
+      el.statsCategoryBreakdown.innerHTML = '';
+      CATEGORIES.forEach(c => {
+        const tot = countsByCat[c.id];
+        const mast = masteredByCat[c.id];
+        const pct = tot > 0 ? Math.round((mast / tot) * 100) : 0;
+
+        const row = document.createElement('div');
+        row.className = 'stat-cat-row';
+        row.innerHTML = `
+          <span class="stat-cat-label">${c.label}</span>
+          <div class="stat-cat-right">
+            <div class="stat-cat-bar"><div class="stat-cat-fill" style="width: ${pct}%"></div></div>
+            <span class="stat-cat-val">${mast} / ${tot}</span>
+          </div>
+        `;
+        el.statsCategoryBreakdown.appendChild(row);
+      });
+    }
   }
 
   /**
@@ -654,7 +749,7 @@
 
     saveStoredSettings();
     rebuildPoolAndUI();
-    nextQuestion();
+    nextQuestion(true);
   }
 
   /**
@@ -671,7 +766,7 @@
     }
 
     rebuildPoolAndUI();
-    nextQuestion();
+    nextQuestion(true);
   }
 
   /**
@@ -688,7 +783,7 @@
     }
 
     rebuildPoolAndUI();
-    nextQuestion();
+    nextQuestion(true);
   }
 
   /**
@@ -710,17 +805,17 @@
     state.settings.categories = checked;
     saveStoredSettings();
     rebuildPoolAndUI();
-    nextQuestion();
+    nextQuestion(true);
   }
 
   /**
-   * Select all 7 categories
+   * Select all categories
    */
   function selectAllCategories() {
     state.settings.categories = CATEGORIES.map(c => c.id);
     saveStoredSettings();
     rebuildPoolAndUI();
-    nextQuestion();
+    nextQuestion(true);
   }
 
   /**
@@ -730,7 +825,7 @@
     state.settings.categories = ['plaats'];
     saveStoredSettings();
     rebuildPoolAndUI();
-    nextQuestion();
+    nextQuestion(true);
   }
 
   /**
@@ -748,7 +843,7 @@
     saveStoredSettings();
     rebuildPoolAndUI();
     if (state.settings.categories.includes(categoryId)) {
-      nextQuestion();
+      nextQuestion(true);
     }
   }
 
@@ -793,6 +888,7 @@
     el.settingsPanel.hidden = false;
     el.settingsBackdrop.hidden = false;
     el.btnSettingsToggle.setAttribute('aria-expanded', 'true');
+    updateCategoriesUI();
     updateSettingsStatsUI();
   }
 
@@ -829,7 +925,7 @@
     closeResetModal();
     closeSettings();
     rebuildPoolAndUI();
-    nextQuestion();
+    nextQuestion(true);
   }
 
   /**
@@ -862,7 +958,7 @@
     });
     saveStoredMastered();
     rebuildPoolAndUI();
-    nextQuestion();
+    nextQuestion(true);
   }
 
   /**
@@ -907,7 +1003,7 @@
       renderProvinceCheckboxes();
       updateToleranceUI(state.settings.toleranceKm);
       rebuildPoolAndUI();
-      nextQuestion();
+      nextQuestion(true);
     } catch (err) {
       console.error('Fout bij het laden van dataset:', err);
       el.targetName.textContent = 'Fout bij inladen';
@@ -920,7 +1016,8 @@
   /**
    * Pick next random question from active questionPool
    */
-  function nextQuestion() {
+  function nextQuestion(shouldResetCamera = true) {
+    const wasFeedback = state.isFeedbackPhase;
     state.isFeedbackPhase = false;
 
     // Clear previous visual feedback
@@ -946,6 +1043,11 @@
     }
 
     state.currentGok = null;
+
+    // Reset map camera to Heel Nederland or active province(s) when advancing
+    if (shouldResetCamera || wasFeedback) {
+      resetMapViewForActiveFilter();
+    }
 
     // Hide progress & feedback row before OK is clicked
     if (el.promptSubRow) el.promptSubRow.hidden = true;
@@ -1051,14 +1153,15 @@
       cat === 'snelweg' ||
       cat === 'kanaal' ||
       cat === 'rivier' ||
-      cat === 'gebouw'
+      cat === 'gebouw' ||
+      cat === 'roeivereniging'
     );
 
     // Compute shortest distance to boundary or line segment
     const result = TopoGeometry.getDistanceToGeometry(gokPoint, geometry);
     const rawDist = typeof result.rawDistanceKm === 'number' ? result.rawDistanceKm : result.distanceKm;
 
-    // Small click buffer (350m) for lines and buildings in 'Precies goed' mode
+    // Small click buffer (350m) for lines and buildings/clubs in 'Precies goed' mode
     const exactHitBufferKm = isLineOrBuilding ? 0.35 : 0;
     const isDirectHit = result.inside || rawDist <= exactHitBufferKm;
     const distanceKm = isDirectHit ? 0 : result.distanceKm;
@@ -1090,8 +1193,8 @@
       }
     }).addTo(map);
 
-    // For small building footprints, add a subtle pulsing ring at the building center so it is easy to spot
-    if (cat === 'gebouw' && state.targetPolygonLayer) {
+    // For small building or rowing club footprints, add a subtle highlight ring at the center so it is easy to spot
+    if ((cat === 'gebouw' || cat === 'roeivereniging') && state.targetPolygonLayer) {
       const bCenter = state.targetPolygonLayer.getBounds().getCenter();
       state.targetHighlightLayer = L.circleMarker(bCenter, {
         radius: 10,
@@ -1136,7 +1239,7 @@
     const combinedBounds = polyBounds.extend([state.currentGok[0], state.currentGok[1]]);
     map.fitBounds(combinedBounds, {
       padding: [70, 70],
-      maxZoom: cat === 'gebouw' ? 14 : 13,
+      maxZoom: (cat === 'gebouw' || cat === 'roeivereniging') ? 14 : 13,
       animate: true,
       duration: 0.6
     });
@@ -1159,6 +1262,7 @@
       // Remove from active question pool
       state.questionPool = state.questionPool.filter(f => String(f.properties.code || f.properties.id) !== code);
       updateProgressUI();
+      updateCategoriesUI();
       updateSettingsStatsUI();
     } else {
       el.feedbackBox.className = 'feedback-box incorrect';
@@ -1176,7 +1280,7 @@
   function setupEventListeners() {
     // Gameplay buttons
     el.btnOk.addEventListener('click', submitGuess);
-    el.btnNext.addEventListener('click', nextQuestion);
+    el.btnNext.addEventListener('click', () => nextQuestion(true));
 
     // Settings flyout toggling
     el.btnSettingsToggle.addEventListener('click', toggleSettings);
@@ -1258,7 +1362,7 @@
         if (state.isResetModalOpen || state.isCompletionModalOpen || state.isSettingsOpen) return;
         e.preventDefault();
         if (state.isFeedbackPhase) {
-          nextQuestion();
+          nextQuestion(true);
         } else if (!el.btnOk.disabled) {
           submitGuess();
         }
@@ -1266,7 +1370,7 @@
         if (state.isResetModalOpen || state.isCompletionModalOpen || state.isSettingsOpen) return;
         if (state.isFeedbackPhase) {
           e.preventDefault();
-          nextQuestion();
+          nextQuestion(true);
         }
       }
     });

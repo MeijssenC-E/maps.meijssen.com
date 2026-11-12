@@ -1,7 +1,7 @@
 {
-  "total_features": 2893,
+  "total_features": 3016,
   "total_woonplaatsen": 2503,
-  "total_extra_features": 390,
+  "total_extra_features": 513,
   "categories": {
     "plaats": {
       "total": 2503,
@@ -58,6 +58,12 @@
         "1 (Top-iconen)": 25,
         "2 (Bekend)": 60,
         "3 (Uitgebreid)": 80
+      }
+    },
+    "roeivereniging": {
+      "total": 123,
+      "tiers": {
+        "1 (Alle roeiverenigingen)": 123
       }
     }
   }

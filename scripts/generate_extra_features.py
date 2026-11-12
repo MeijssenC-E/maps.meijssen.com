@@ -416,7 +416,7 @@ def fetch_nature_and_n2k_waters():
 
 
 # ==============================================================================
-# 3. EXTRA MEREN & PLASSEN (PDOK TOP10NL waterdeel_vlak / polygoon)
+# 3. EXTRA MEREN & PLASSEN (OpenStreetMap Nominatim volledige waterpolygonen)
 # ==============================================================================
 EXTRA_LAKES = [
     ("Veluwemeer", 1, "randmeer", ["Flevoland", "Gelderland"], "Randmeer tussen Oostelijk Flevoland en de Noord-Veluwe", [(5.62, 52.38), (5.72, 52.42), (5.79, 52.45), (5.68, 52.40), (5.58, 52.36)]),
@@ -429,7 +429,7 @@ EXTRA_LAKES = [
     ("Bergumermeer", 2, "meer", ["Fryslân"], "Groot meer in het noordoosten van Fryslân bij Burgum (Burgumer Mar)", [(6.02, 53.19), (6.05, 53.20), (6.04, 53.18), (6.01, 53.18)]),
     ("Kagerplassen", 2, "plassen", ["Zuid-Holland"], "Watersport- en plassengebied ten noordoosten van Leiden bij Warmond en Kaag", [(4.53, 52.20), (4.56, 52.21), (4.55, 52.19), (4.52, 52.19)]),
     ("Westeinderplassen", 2, "plassen", ["Noord-Holland"], "Groot plassengebied in Noord-Holland tussen Aalsmeer, Leimuiden en Kudelstaart", [(4.72, 52.25), (4.76, 52.26), (4.75, 52.23), (4.71, 52.24)]),
-    ("Brasemermeer", 2, "meer", ["Zuid-Holland"], "Rond meer in het noorden van Zuid-Holland bij Roelofarendsveen en Woubrugge", [(4.66, 52.16), (4.68, 52.17), (4.68, 52.15), (4.66, 52.15)]),
+    ("Braassemermeer", 2, "meer", ["Zuid-Holland"], "Rond meer in het noorden van Zuid-Holland bij Roelofarendsveen en Woubrugge", [(4.66, 52.16), (4.68, 52.17), (4.68, 52.15), (4.66, 52.15)]),
     ("Reeuwijkse Plassen", 2, "plassen", ["Zuid-Holland"], "Laagveenplassengebied ten oosten van Gouda bij Reeuwijk", [(4.74, 52.04), (4.78, 52.05), (4.77, 52.02), (4.73, 52.03)]),
     ("Vinkeveense Plassen", 2, "plassen", ["Utrecht"], "Plassengebied met legakkers en zandeilanden bij Vinkeveen in Noordwest-Utrecht", [(4.94, 52.23), (4.97, 52.24), (4.96, 52.21), (4.93, 52.21)]),
     ("Kralingse Plas", 2, "meer / plas", ["Zuid-Holland"], "Bekende recreatieplas grenzend aan het Kralingse Bos in Rotterdam", [(4.51, 51.935), (4.525, 51.94), (4.525, 51.928), (4.51, 51.928)]),
@@ -444,30 +444,53 @@ EXTRA_LAKES = [
     ("Dollard", 2, "zeearm", ["Groningen"], "Inham van de Waddenzee en de Eemsmonding in het uiterste noordoosten van Groningen", [(7.08, 53.29), (7.19, 53.31), (7.18, 53.24), (7.07, 53.25)]),
 ]
 
+LAKE_QUERY_MAP = {
+    "Belterwijde & Beulakerwijde": ["Belterwijde", "Beulakerwijde"],
+    "Alkmaardermeer": ["Alkmaardermeer", "Uitgeestermeer"],
+}
 
-def fetch_top10_water_polygon(name: str, pts):
-    """Fetch official TOP10NL waterdeel_vlak polygon at center of lake, with fallback to bounding polygon."""
-    cx = sum(p[0] for p in pts) / len(pts)
-    cy = sum(p[1] for p in pts) / len(pts)
-    bbox = f"{cx - 0.025:.4f},{cy - 0.02:.4f},{cx + 0.025:.4f},{cy + 0.02:.4f}"
-    url = f"https://api.pdok.nl/brt/top10nl/ogc/v1/collections/waterdeel_vlak/items?f=json&limit=25&bbox={bbox}"
-    try:
-        data = fetch_json(url, timeout=10)
-        polys = []
-        target_key = name.split()[0].lower()
-        for f in data.get("features", []):
-            p = f.get("properties", {})
-            wname = (p.get("naamnl") or p.get("naamofficieel") or p.get("naamfries") or "").lower()
-            geom = f.get("geometry")
-            if geom and (target_key in wname or p.get("typewater") == "meer, plas"):
-                if geom["type"] == "Polygon":
-                    polys.append(geom["coordinates"])
-                elif geom["type"] == "MultiPolygon":
-                    polys.extend(geom["coordinates"])
-        if polys:
-            return {"type": "MultiPolygon", "coordinates": polys[:8]}
-    except Exception:
-        pass
+
+def fetch_nominatim_water_polygon(name: str, pts):
+    """Fetch complete water polygon(s) from OpenStreetMap Nominatim with fallback."""
+    import time
+
+    queries = LAKE_QUERY_MAP.get(name, [name])
+    polys = []
+    for q in queries:
+        url = "https://nominatim.openstreetmap.org/search?" + urllib.parse.urlencode(
+            {
+                "q": q,
+                "countrycodes": "nl",
+                "format": "json",
+                "polygon_geojson": 1,
+                "polygon_threshold": 0.00015,
+                "limit": 8,
+            }
+        )
+        try:
+            res = fetch_json(url, timeout=15)
+            candidates = [
+                d
+                for d in res
+                if d.get("geojson", {}).get("type") in ("Polygon", "MultiPolygon")
+                and d.get("class") in ("water", "natural", "leisure", "place", "boundary")
+            ]
+            candidates.sort(key=lambda d: len(json.dumps(d.get("geojson", {}))), reverse=True)
+            if candidates:
+                g = candidates[0]["geojson"]
+                if g["type"] == "Polygon":
+                    polys.append(g["coordinates"])
+                elif g["type"] == "MultiPolygon":
+                    polys.extend(g["coordinates"])
+        except Exception as e:
+            print(f"  Waarschuwing meer {name} ({q}): {e}")
+        time.sleep(0.25)
+
+    if polys:
+        if len(polys) == 1:
+            return {"type": "Polygon", "coordinates": polys[0]}
+        return {"type": "MultiPolygon", "coordinates": polys}
+
     ring = [[round(p[0], 5), round(p[1], 5)] for p in pts]
     if ring[0] != ring[-1]:
         ring.append(ring[0])
@@ -475,11 +498,11 @@ def fetch_top10_water_polygon(name: str, pts):
 
 
 def build_extra_lakes():
-    print("Stap 3: Ophalen van aanvullende meren en randmeren via PDOK BRT TOP10NL...")
+    print("Stap 3: Ophalen van volledige meer- en randmeerpolygonen via OpenStreetMap Nominatim...")
     features = []
     for name, tier, sub, provs, desc, pts in EXTRA_LAKES:
         slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
-        geom = fetch_top10_water_polygon(name, pts)
+        geom = fetch_nominatim_water_polygon(name, pts)
         features.append(
             {
                 "type": "Feature",
@@ -498,8 +521,9 @@ def build_extra_lakes():
                 "geometry": geom,
             }
         )
-    print(f"  {len(features)} extra meren/plassen samengesteld.")
+    print(f"  {len(features)} extra meren/plassen met volledige polygoon samengesteld.")
     return features
+
 
 
 # ==============================================================================
@@ -557,34 +581,166 @@ RIVERS_DATA = [
 ]
 
 
-def build_rivers():
-    print("Stap 4: Samenstellen van Nederlandse hoofd- en regionale rivieren...")
-    features = []
-    for name, tier, provs, desc, coords in RIVERS_DATA:
-        slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
-        features.append(
-            {
-                "type": "Feature",
-                "id": f"RV_{slug}",
-                "properties": {
-                    "id": f"RV_{slug}",
-                    "code": f"RV_{slug}",
-                    "naam": name,
-                    "categorie": "rivier",
-                    "subcategorie": "rivier",
-                    "tier": tier,
-                    "provincie": provs[0],
-                    "provincies": provs,
-                    "details": desc,
-                },
-                "geometry": {
-                    "type": "LineString",
-                    "coordinates": coords,
-                },
-            }
+NWB_WATERWAY_MAP = {
+    "Nederrijn": [
+        "Neder-Rijn",
+        "Benedenstrooms Stuwkanaal te Amerongen, Neder-Rijn",
+        "Bovenstrooms Stuwkanaal te Amerongen, Neder-Rijn",
+        "Benedenstrooms Stuwkanaal te Driel, Neder-Rijn",
+        "Bovenstrooms Stuwkanaal te Driel, Neder-Rijn",
+    ],
+    "Gelderse IJssel": ["Geldersche IJssel"],
+    "Boven- en Beneden-Merwede": ["Boven Merwede", "Boven-Merwede", "Beneden-Merwede"],
+    "Rivier de Noord": ["Noord"],
+    "Hollandse IJssel": ["Hollandsche IJssel", "Gekanaliseerde Hollandsche IJssel"],
+    "Utrechtse Vecht": ["Vecht"],
+    "Zaan": ["Zaan", "Voorzaan", "Achterzaan of Binnenzaan"],
+    "Spaarne": ["Binnen-Spaarne", "Noorder Buiten-Spaarne", "Zuider Buiten-Spaarne"],
+    "Mark en Dintel": ["Mark", "Dintel", "Toegangsgeul naar de Mark en Dintel"],
+    "Tjonger (Kuinder)": ["Kuinder of Tjonger"],
+    "Twentekanaal": ["Kanaal Zutphen-Enschede", "Zijkanaal naar Almelo"],
+    "Schelde-Rijnkanaal": [
+        "Schelde-Rijnverbinding",
+        "Eendracht, Schelde-Rijnverbinding",
+        "Kreekrak, Schelde-Rijnverbinding",
+        "Oosterschelde Rak, Schelde-Rijnverbinding",
+    ],
+    "Hartelkanaal & Calandkanaal": ["Hartelkanaal", "Calandkanaal"],
+    "Merwedekanaal": ["Merwedekanaal (benoorden de Lek)", "Merwedekanaal (bezuiden de Lek)"],
+    "Rijn-Schiekanaal (De Vliet)": ["Rijn-Schiekanaal"],
+    "Ringvaart van de Haarlemmermeerpolder": [
+        "Ringvaart van de Haarlemmermeerpolder (noordelijk gedeelte)",
+        "Ringvaart van de Haarlemmermeerpolder (oostelijk deel)",
+        "Ringvaart van de Haarlemmermeerpolder (westelijk gedeelte)",
+        "Ringvaart van de Haarlemmermeerpolder (zuidelijk deel)",
+    ],
+    "Hoogeveense Vaart": ["Hoogeveensche Vaart", "Verlengde Hoogeveensche Vaart", "Oude Hoogeveense Vaart"],
+}
+
+NOMINATIM_WATERWAYS = {
+    "Dommel": (["Dommel"], True),
+    "Dinkel": (["Dinkel"], True),
+    "Regge": (["Regge"], True),
+    "Berkel": (["Berkel"], False),
+    "Geul": (["Geul Limburg"], True),
+    "Drentsche Aa": (["Drentsche Aa", "Schipborgsche Diep", "Oudemolensche Diep", "Deurzerdiep", "Amerdiep"], True),
+    "Valleikanaal": (["Valleikanaal"], True),
+    "Apeldoorns Kanaal": (["Apeldoorns Kanaal"], True),
+    "Oranjekanaal": (["Oranjekanaal"], True),
+    "Overijssels Kanaal": (["Overijssels Kanaal"], True),
+    "Eindhovens Kanaal": (["Eindhovensch Kanaal"], True),
+}
+
+TOP10_WATERWAYS = {
+    "Roer": "5.97,51.11,6.15,51.20",
+    "Niers": "5.95,51.68,6.07,51.72",
+    "Hunze": "6.68,52.93,6.85,53.15",
+}
+
+
+def _extract_waterway_lines(geom, clip_nl: bool = False):
+    lines = []
+    if not geom:
+        return lines
+    if geom["type"] == "LineString":
+        lines.append(geom["coordinates"])
+    elif geom["type"] == "MultiLineString":
+        lines.extend(geom["coordinates"])
+    elif geom["type"] == "Polygon":
+        lines.append(geom["coordinates"][0])
+    elif geom["type"] == "MultiPolygon":
+        for poly in geom["coordinates"]:
+            if poly:
+                lines.append(poly[0])
+    if clip_nl:
+        clipped = []
+        for line in lines:
+            c = [pt for pt in line if 3.3 <= pt[0] <= 7.25 and 50.7 <= pt[1] <= 53.6]
+            if len(c) >= 2:
+                clipped.append(c)
+        return clipped
+    return lines
+
+
+def _fetch_top10_waterway_lines(name: str, bbox: str):
+    lines = []
+    for col in ("waterdeel_vlak", "waterdeel_lijn"):
+        url = f"https://api.pdok.nl/brt/top10nl/ogc/v1/collections/{col}/items?f=json&limit=1000&bbox={bbox}"
+        try:
+            data = fetch_json(url, timeout=15)
+            for f in data.get("features", []):
+                p = f.get("properties", {})
+                nm = (p.get("naamnl") or p.get("naamofficieel") or "").lower()
+                if name.lower() in nm:
+                    lines.extend(_extract_waterway_lines(f.get("geometry")))
+        except Exception as e:
+            print(f"  Waarschuwing TOP10NL waterweg {name} ({col}): {e}")
+    return lines
+
+
+def fetch_nwb_vaarwegen_features():
+    print("Stap 4a: Ophalen van officiële Rijkswaterstaat NWB Vaarwegen via PDOK WFS...")
+    all_feats = []
+    for start in range(0, 5000, 1000):
+        url = (
+            "https://service.pdok.nl/rws/nwbvaarwegen/wfs/v1_0?"
+            f"service=WFS&version=2.0.0&request=GetFeature&typeName=nwbvaarwegen:vaarwegvakken"
+            f"&count=1000&startIndex={start}&outputFormat=application/json&srsName=EPSG:4326"
         )
-    print(f"  {len(features)} rivieren samengesteld.")
-    return features
+        data = fetch_json(url, timeout=20)
+        feats = data.get("features", [])
+        all_feats.extend(feats)
+        if len(feats) < 1000:
+            break
+    print(f"  {len(all_feats)} vaarwegvakken opgehaald uit PDOK NWB Vaarwegen.")
+    return all_feats
+
+
+def _resolve_waterway_geometry(name: str, fallback_coords, nwb_feats):
+    import time
+
+    lines = []
+    if name in TOP10_WATERWAYS:
+        lines.extend(_fetch_top10_waterway_lines(name, TOP10_WATERWAYS[name]))
+
+    if not lines and name in NOMINATIM_WATERWAYS:
+        queries, nl_only = NOMINATIM_WATERWAYS[name]
+        for q in queries:
+            params = {
+                "q": q,
+                "format": "json",
+                "polygon_geojson": 1,
+                "polygon_threshold": 0.00015,
+                "limit": 10,
+            }
+            if nl_only:
+                params["countrycodes"] = "nl"
+            url = "https://nominatim.openstreetmap.org/search?" + urllib.parse.urlencode(params)
+            try:
+                res = fetch_json(url, timeout=15)
+                for d in res:
+                    if d.get("class") in ("waterway", "natural", "water") and d.get("geojson", {}).get("type") in (
+                        "LineString",
+                        "MultiLineString",
+                    ):
+                        lines.extend(_extract_waterway_lines(d["geojson"], clip_nl=not nl_only))
+            except Exception as e:
+                print(f"  Waarschuwing waterweg {name} ({q}): {e}")
+            time.sleep(0.4)
+
+    if not lines:
+        targets = set(t.lower() for t in NWB_WATERWAY_MAP.get(name, [name]))
+        for f in nwb_feats:
+            vn = (f.get("properties", {}).get("vwgNaam") or "").lower()
+            if vn in targets:
+                lines.extend(_extract_waterway_lines(f.get("geometry")))
+
+    if not lines:
+        return {"type": "LineString", "coordinates": fallback_coords}
+    if len(lines) == 1:
+        return {"type": "LineString", "coordinates": lines[0]}
+    return {"type": "MultiLineString", "coordinates": lines}
+
 
 
 # ==============================================================================
@@ -635,12 +791,37 @@ CANALS_DATA = [
 ]
 
 
-def build_canals():
-    print("Stap 5: Samenstellen van Nederlandse hoofd- en regionale kanalen...")
-    features = []
-    for name, tier, provs, desc, coords in CANALS_DATA:
+def build_rivers_and_canals():
+    nwb_feats = fetch_nwb_vaarwegen_features()
+    print("Stap 4b: Samenstellen van Nederlandse rivieren en kanalen met exacte vaarweg-geometrie...")
+    river_features = []
+    for name, tier, provs, desc, fallback_coords in RIVERS_DATA:
         slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
-        features.append(
+        geom = _resolve_waterway_geometry(name, fallback_coords, nwb_feats)
+        river_features.append(
+            {
+                "type": "Feature",
+                "id": f"RV_{slug}",
+                "properties": {
+                    "id": f"RV_{slug}",
+                    "code": f"RV_{slug}",
+                    "naam": name,
+                    "categorie": "rivier",
+                    "subcategorie": "rivier",
+                    "tier": tier,
+                    "provincie": provs[0],
+                    "provincies": provs,
+                    "details": desc,
+                },
+                "geometry": geom,
+            }
+        )
+
+    canal_features = []
+    for name, tier, provs, desc, fallback_coords in CANALS_DATA:
+        slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+        geom = _resolve_waterway_geometry(name, fallback_coords, nwb_feats)
+        canal_features.append(
             {
                 "type": "Feature",
                 "id": f"KN_{slug}",
@@ -655,14 +836,13 @@ def build_canals():
                     "provincies": provs,
                     "details": desc,
                 },
-                "geometry": {
-                    "type": "LineString",
-                    "coordinates": coords,
-                },
+                "geometry": geom,
             }
         )
-    print(f"  {len(features)} kanalen samengesteld.")
-    return features
+
+    print(f"  {len(river_features)} rivieren en {len(canal_features)} kanalen met exacte loop samengesteld.")
+    return river_features, canal_features
+
 
 
 # ==============================================================================
@@ -821,16 +1001,179 @@ def build_buildings():
     return features
 
 
+# ==============================================================================
+# 7. ROEIVERENIGINGEN (Alle 123 Nederlandse studenten- en algemene roeiverenigingen)
+# ==============================================================================
+ROWING_CLUBS_DATA = [
+    ('Aegir', 'studentenroeivereniging', 'Groningen', 'Groningen', '1878', 6.5612, 53.1925),
+    ('Agon', 'studentenroeivereniging', 'Almere', 'Flevoland', '2015', 5.2692, 52.354),
+    ('Amphitrite', 'studentenroeivereniging', 'Haarlem', 'Noord-Holland', '1990', 4.6485, 52.3912),
+    ('Argo', 'studentenroeivereniging', 'Wageningen', 'Gelderland', '1913', 5.6455, 51.9585),
+    ('Asopos de Vliet', 'studentenroeivereniging', 'Leiden (Leiderdorp)', 'Zuid-Holland', '1962', 4.5398, 52.1642),
+    ('Boreas', 'studentenroeivereniging', 'Zwolle', 'Overijssel', '2004', 6.0825, 52.5228),
+    ('Dudok van Heel', 'studentenroeivereniging', 'Breda', 'Noord-Brabant', '1905', 4.7758, 51.5912),
+    ('Euros', 'studentenroeivereniging', 'Enschede', 'Overijssel', '1965', 6.8145, 52.2312),
+    ('Gyas', 'studentenroeivereniging', 'Groningen', 'Groningen', '1964', 6.5578, 53.1982),
+    ('Laga', 'studentenroeivereniging', 'Delft', 'Zuid-Holland', '1876', 4.3676, 52.0042),
+    ('Nereus', 'studentenroeivereniging', 'Amsterdam', 'Noord-Holland', '1885', 4.9068, 52.3422),
+    ('Njord', 'studentenroeivereniging', 'Leiden', 'Zuid-Holland', '1874', 4.4692, 52.1558),
+    ('Notos', 'studentenroeivereniging', 'Venlo', 'Limburg', '2022', 6.1422, 51.3752),
+    ('Odin', 'studentenroeivereniging', 'Middelburg', 'Zeeland', '2015', 3.6195, 51.4932),
+    ('Okeanos', 'studentenroeivereniging', 'Amstelveen', 'Noord-Holland', '1957', 4.8496, 52.3289),
+    ('Orca', 'studentenroeivereniging', 'Utrecht', 'Utrecht', '1970', 5.1182, 52.0548),
+    ('Panta Rhei', 'studentenroeivereniging', 'Den Helder', 'Noord-Holland', '1904', 4.7695, 52.9585),
+    ('Pelargos', 'studentenroeivereniging', 'Den Haag', 'Zuid-Holland', '2002', 4.3318, 52.0635),
+    ('Phocas', 'studentenroeivereniging', 'Nijmegen', 'Gelderland', '1947', 5.8625, 51.8558),
+    ('Proteus-Eretes', 'studentenroeivereniging', 'Delft', 'Zuid-Holland', '1947', 4.3758, 51.9868),
+    ('Saurus', 'studentenroeivereniging', 'Maastricht', 'Limburg', '1983', 5.6912, 50.8245),
+    ('Skadi', 'studentenroeivereniging', 'Rotterdam', 'Zuid-Holland', '1925', 4.4698, 51.9366),
+    ('Skøll', 'studentenroeivereniging', 'Amsterdam', 'Noord-Holland', '1966', 4.9087, 52.3364),
+    ('Thêta', 'studentenroeivereniging', 'Eindhoven', 'Noord-Brabant', '1975', 5.5025, 51.4342),
+    ('Triton', 'studentenroeivereniging', 'Utrecht', 'Utrecht', '1880', 5.1185, 52.0552),
+    ('Vidar', 'studentenroeivereniging', 'Tilburg', 'Noord-Brabant', '1961', 5.1465, 51.5318),
+    ('Alkmaarsche R&ZV', 'algemene roeivereniging', 'Alkmaar', 'Noord-Holland', '1910', 4.7512, 52.6358),
+    ('Aeneas', 'algemene roeivereniging', 'Roermond', 'Limburg', '1978', 6.0102, 51.1904),
+    ('Aengwirden', 'algemene roeivereniging', 'Heerenveen', 'Fryslân', '1999', 5.926, 52.9624),
+    ('RV Alphen', 'algemene roeivereniging', 'Alphen aan den Rijn', 'Zuid-Holland', '1978', 4.6652, 52.1302),
+    ('Amenophis', 'algemene roeivereniging', 'Zeewolde', 'Flevoland', '1988', 5.5047, 52.3627),
+    ('Amycus', 'algemene roeivereniging', 'Almelo', 'Overijssel', '1987', 6.618, 52.3576),
+    ('De Amstel', 'algemene roeivereniging', 'Amsterdam', 'Noord-Holland', '1874', 4.8872, 52.3526),
+    ('De Ank', 'algemene roeivereniging', 'Doetinchem', 'Gelderland', '1931', 6.3151, 51.9648),
+    ('Het Anker', 'algemene roeivereniging', 'Ulft', 'Gelderland', '2011', 6.3743, 51.8952),
+    ('Aquarius', 'algemene roeivereniging', 'Bergen op Zoom', 'Noord-Brabant', '2005', 4.2973, 51.4896),
+    ('AROSS', 'algemene roeivereniging', 'Oss (Macharen)', 'Noord-Brabant', '1983', 5.5217, 51.7649),
+    ('Asser Roeiclub', 'algemene roeivereniging', 'Assen', 'Drenthe', '1980', 6.6006, 53.0113),
+    ('RV Barendrecht', 'algemene roeivereniging', 'Barendrecht', 'Zuid-Holland', '1979', 4.5254, 51.8511),
+    ('Beatrix', 'algemene roeivereniging', 'Eindhoven', 'Noord-Brabant', '1963', 5.5248, 51.4395),
+    ('Binnenmaas', 'algemene roeivereniging', 'Mijnsheerenland', 'Zuid-Holland', '2005', 4.4872, 51.8035),
+    ('RV Breda', 'algemene roeivereniging', 'Breda (Terheijden)', 'Noord-Brabant', '1974', 4.7545, 51.6382),
+    ('De Compagnie', 'algemene roeivereniging', 'Hoogeveen', 'Drenthe', '2007', 6.4741, 52.7182),
+    ('HRV Cornelis Tromp', 'algemene roeivereniging', 'Hilversum', 'Noord-Holland', '1936', 5.168, 52.2231),
+    ('Daventria', 'algemene roeivereniging', 'Deventer', 'Overijssel', '1884', 6.1927, 52.2501),
+    ('DRV34', 'algemene roeivereniging', 'Emmen', 'Drenthe', 'n.a.', 6.9011, 52.7783),
+    ('De Delftsche Sport', 'algemene roeivereniging', 'Delft', 'Zuid-Holland', '1885', 4.3772, 51.9845),
+    ('De DoorSlag', 'algemene roeivereniging', 'Nieuwegein', 'Utrecht', '2004', 5.0989, 52.0209),
+    ('De Drie Provinciën', 'algemene roeivereniging', 'Cuijk (Katwijk)', 'Noord-Brabant', '1992', 5.8693, 51.7278),
+    ("'t Diep", 'algemene roeivereniging', 'Steenwijk (Tuk)', 'Overijssel', '1986', 6.1263, 52.789),
+    ('Koninklijke Dordrechtse R&ZV', 'algemene roeivereniging', 'Dordrecht', 'Zuid-Holland', '1851', 4.7089, 51.7815),
+    ('De Dragt', 'algemene roeivereniging', 'Drachten', 'Fryslân', '1981', 6.0437, 53.1016),
+    ('De Drietand', 'algemene roeivereniging', 'Amsterdam', 'Noord-Holland', '1930', 4.9535, 52.3882),
+    ('Dutch Coastal Rowing', 'algemene roeivereniging', 'Apeldoorn', 'Gelderland', '2016', 5.9695, 52.2112),
+    ('De Eem', 'algemene roeivereniging', 'Baarn', 'Utrecht', '1923', 5.2713, 52.2071),
+    ('Epsilon', 'algemene roeivereniging', 'Leeuwarden', 'Fryslân', '1992', 5.8057, 53.2161),
+    ('Het Galjoen', 'algemene roeivereniging', 'Breukelen', 'Utrecht', '1946', 4.9995, 52.168),
+    ('De Geeuw', 'algemene roeivereniging', 'Sneek', 'Fryslân', '1985', 5.6651, 53.0292),
+    ('Gorcumse R&ZV', 'algemene roeivereniging', 'Gorinchem', 'Zuid-Holland', '1924', 4.9744, 51.8395),
+    ('R&ZV Gouda', 'algemene roeivereniging', 'Gouda (Reeuwijk)', 'Zuid-Holland', '1911', 4.7062, 52.0153),
+    ('De Grift', 'algemene roeivereniging', 'Apeldoorn (Beekbergen)', 'Gelderland', '2007', 5.9832, 52.1917),
+    ('Harder', 'algemene roeivereniging', 'Harderwijk', 'Gelderland', '2021', 5.6359, 52.3375),
+    ('De Helling', 'algemene roeivereniging', 'Culemborg', 'Gelderland', '1996', 5.2104, 51.9458),
+    ('Hemus', 'algemene roeivereniging', 'Amersfoort', 'Utrecht', '1990', 5.3665, 52.17),
+    ('De Hertog', 'algemene roeivereniging', "'s-Hertogenbosch", 'Noord-Brabant', '1992', 5.2957, 51.71),
+    ('Honte', 'algemene roeivereniging', 'Middelburg', 'Zeeland', '1960', 3.6199, 51.4935),
+    ('KARZV De Hoop', 'algemene roeivereniging', 'Amsterdam', 'Noord-Holland', '1848', 4.9085, 52.3541),
+    ('KGR De Hunze', 'algemene roeivereniging', 'Groningen', 'Groningen', '1886', 6.5598, 53.2136),
+    ('De IJssel', 'algemene roeivereniging', 'Kampen (IJsselmuiden)', 'Overijssel', '1909', 5.9164, 52.5703),
+    ('Isala', 'algemene roeivereniging', 'Zutphen', 'Gelderland', '1912', 6.208, 52.1354),
+    ('Iris', 'algemene roeivereniging', 'Lisse', 'Zuid-Holland', '2009', 4.5458, 52.2556),
+    ('De Kop', 'algemene roeivereniging', 'Schagen', 'Noord-Holland', '2007', 4.7955, 52.787),
+    ('RV Jason', 'algemene roeivereniging', 'Arnhem', 'Gelderland', '1927', 5.8926, 52.0011),
+    ('KNZ&RV', 'algemene roeivereniging', 'Muiden', 'Noord-Holland', '1847', 5.0709, 52.3477),
+    ('De Krom', 'algemene roeivereniging', 'Woerden', 'Utrecht', '1991', 4.879, 52.0863),
+    ('De Kogge', 'algemene roeivereniging', 'Medemblik (Wervershoof)', 'Noord-Holland', '2006', 5.1784, 52.8282),
+    ('De Laak', 'algemene roeivereniging', 'Den Haag', 'Zuid-Holland', '1911', 4.3312, 52.0638),
+    ('RV Leerdam', 'algemene roeivereniging', 'Leerdam', 'Utrecht', '1963', 5.0864, 51.8819),
+    ('Die Leythe', 'algemene roeivereniging', 'Leiden', 'Zuid-Holland', '1914', 4.5218, 52.1445),
+    ('Limes', 'algemene roeivereniging', 'Odijk (Bunnik)', 'Utrecht', '2021', 5.2211, 52.0462),
+    ('KWV Loosdrecht', 'algemene roeivereniging', 'Loosdrecht', 'Noord-Holland', '1912', 5.0851, 52.2005),
+    ('KR&ZV De Maas', 'algemene roeivereniging', 'Rotterdam', 'Zuid-Holland', '1851', 4.4812, 51.9082),
+    ('De Meije', 'algemene roeivereniging', 'Nieuwkoop', 'Zuid-Holland', '1972', 4.7883, 52.1461),
+    ('Michiel de Ruyter', 'algemene roeivereniging', 'Uithoorn', 'Noord-Holland', '1964', 4.823, 52.2424),
+    ('Maastrichtsche Watersportclub (MWC)', 'algemene roeivereniging', 'Maastricht', 'Limburg', '1914', 5.6938, 50.8318),
+    ('RV Naarden', 'algemene roeivereniging', 'Naarden', 'Noord-Holland', '1952', 5.1595, 52.2902),
+    ('Nautilus', 'algemene roeivereniging', 'Rotterdam', 'Zuid-Holland', '1886', 4.5262, 51.8975),
+    ('Neptunus', 'algemene roeivereniging', 'Delfzijl', 'Groningen', '1965', 6.9253, 53.3356),
+    ('Ossa', 'algemene roeivereniging', 'Heerhugowaard', 'Noord-Holland', '1974', 4.8446, 52.676),
+    ('Pampus', 'algemene roeivereniging', 'Almere', 'Flevoland', '1980', 5.2695, 52.3543),
+    ('Pontos', 'algemene roeivereniging', 'Lelystad', 'Flevoland', '1978', 5.4896, 52.501),
+    ('Poseidon', 'algemene roeivereniging', 'Amsterdam', 'Noord-Holland', '1907', 4.9086, 52.3372),
+    ('RIC', 'algemene roeivereniging', 'Amsterdam', 'Noord-Holland', '1931', 4.9159, 52.3403),
+    ('Rijnland', 'algemene roeivereniging', 'Leidschendam', 'Zuid-Holland', '1965', 4.4349, 52.0934),
+    ('Rijnmond', 'algemene roeivereniging', 'Rotterdam', 'Zuid-Holland', '1983', 4.4876, 51.9407),
+    ('Roosendaalse RV', 'algemene roeivereniging', 'Roosendaal', 'Noord-Brabant', '1988', 4.4587, 51.5293),
+    ('RVD17', 'algemene roeivereniging', 'Dronten', 'Flevoland', '2017', 5.7535, 52.5291),
+    ('RV Zeeuws-Vlaanderen', 'algemene roeivereniging', 'Terneuzen', 'Zeeland', '1987', 3.8089, 51.3518),
+    ('RV Salland', 'algemene roeivereniging', 'Gramsbergen', 'Overijssel', '1987', 6.6722, 52.6085),
+    ('Scaldis', 'algemene roeivereniging', 'Goes', 'Zeeland', '1985', 3.8908, 51.5019),
+    ('Scheveningsche RV', 'algemene roeivereniging', 'Den Haag (Scheveningen)', 'Zuid-Holland', '2004', 4.2625, 52.0945),
+    ('SilVia', 'algemene roeivereniging', 'Amstelveen', 'Noord-Holland', '2014', 4.8482, 52.3288),
+    ('Skylla', 'algemene roeivereniging', 'Wolvega', 'Fryslân', '2015', 6.0069, 52.8723),
+    ('KR&ZV Het Spaarne', 'algemene roeivereniging', 'Heemstede', 'Noord-Holland', '1885', 4.6345, 52.3458),
+    ('De Stern', 'algemene roeivereniging', 'IJmuiden', 'Noord-Holland', '1957', 4.5778, 52.4555),
+    ('Thyro', 'algemene roeivereniging', 'Enschede', 'Overijssel', '1995', 6.814, 52.2316),
+    ('Tilburgse Open Roeivereniging (TOR)', 'algemene roeivereniging', 'Hilvarenbeek', 'Noord-Brabant', '1985', 5.1482, 51.5312),
+    ('Tubantia', 'algemene roeivereniging', 'Hengelo', 'Overijssel', '1935', 6.7782, 52.2549),
+    ('Viking', 'algemene roeivereniging', 'Utrecht', 'Utrecht', '1906', 5.1179, 52.0544),
+    ('RV Voorne-Putten (RVVP)', 'algemene roeivereniging', 'Brielle (Zwartewaal)', 'Zuid-Holland', '2007', 4.1668, 51.9067),
+    ('De Waal', 'algemene roeivereniging', 'Nijmegen (Lent)', 'Gelderland', '2005', 5.8648, 51.8562),
+    ('RV Weert', 'algemene roeivereniging', 'Weert', 'Limburg', '2013', 5.6896, 51.2388),
+    ('RV Weesp', 'algemene roeivereniging', 'Weesp', 'Noord-Holland', '1978', 5.0515, 52.3032),
+    ('WSV IJburg', 'algemene roeivereniging', 'Amsterdam', 'Noord-Holland', '2022', 5.0028, 52.3585),
+    ('WSV Vada', 'algemene roeivereniging', 'Wageningen', 'Gelderland', '1912', 5.6542, 51.9612),
+    ('WSV De Maas', 'algemene roeivereniging', 'Venlo', 'Limburg', '1931', 6.1428, 51.3756),
+    ('Wetterwille', 'algemene roeivereniging', 'Leeuwarden', 'Fryslân', '1919', 5.8365, 53.1885),
+    ('De Where', 'algemene roeivereniging', 'Purmerend', 'Noord-Holland', '1958', 4.9711, 52.5022),
+    ('Willem III', 'algemene roeivereniging', 'Amsterdam', 'Noord-Holland', '1882', 4.9086, 52.3359),
+    ('De Zaan', 'algemene roeivereniging', 'Zaandijk', 'Noord-Holland', '1896', 4.8, 52.4741),
+    ('Zaankanaries', 'algemene roeivereniging', 'Wormer', 'Noord-Holland', '2011', 4.8263, 52.4998),
+    ('ZZV', 'algemene roeivereniging', 'Zaandam', 'Noord-Holland', '1882', 4.8252, 52.4454),
+    ('Zwolsche R&ZV', 'algemene roeivereniging', 'Zwolle', 'Overijssel', '1887', 6.0818, 52.5232),
+]
+
+
+def build_rowing_clubs():
+    print("Stap 7: Samenstellen van alle 123 Nederlandse roeiverenigingen...")
+    features = []
+    for name, sub, plaats, prov, year, lon, lat in ROWING_CLUBS_DATA:
+        slug = re.sub(r"[^a-z0-9]+", "_", f"{name}_{plaats}".lower()).strip("_")
+        type_label = "Studentenroeivereniging" if "student" in sub else "Roeivereniging"
+        year_str = f" · Opgericht in {year}" if year and year != "n.a." else ""
+        desc = f"{type_label} in {plaats} ({prov}){year_str}"
+        geom = make_box_polygon(lon, lat, 110.0)
+        features.append(
+            {
+                "type": "Feature",
+                "id": f"ROE_{slug}",
+                "properties": {
+                    "id": f"ROE_{slug}",
+                    "code": f"ROE_{slug}",
+                    "naam": name,
+                    "categorie": "roeivereniging",
+                    "subcategorie": sub,
+                    "tier": 1,
+                    "plaats": plaats,
+                    "provincie": prov,
+                    "provincies": [prov],
+                    "details": desc,
+                },
+                "geometry": geom,
+            }
+        )
+    features.sort(key=lambda f: f["properties"]["naam"])
+    print(f"  {len(features)} roeiverenigingen samengesteld.")
+    return features
+
+
 def main():
     highways = fetch_highways()
     nature_areas, n2k_waters = fetch_nature_and_n2k_waters()
     extra_lakes = build_extra_lakes()
-    rivers = build_rivers()
-    canals = build_canals()
+    rivers, canals = build_rivers_and_canals()
     buildings = build_buildings()
+    rowing_clubs = build_rowing_clubs()
 
     # Combine all extra features
-    all_extra = highways + rivers + canals + n2k_waters + extra_lakes + nature_areas + buildings
+    all_extra = highways + rivers + canals + n2k_waters + extra_lakes + nature_areas + buildings + rowing_clubs
 
     geojson_doc = {
         "type": "FeatureCollection",
@@ -842,13 +1185,13 @@ def main():
     with open(GEOJSON_OUT, "w", encoding="utf-8") as f:
         json.dump(geojson_doc, f, ensure_ascii=False)
 
-    print("Stap 7: Converteren en optimaliseren naar TopoJSON via mapshaper...")
+    print("Stap 8: Converteren en optimaliseren naar TopoJSON via mapshaper...")
     cmd = [
         "npx",
         "mapshaper",
         str(GEOJSON_OUT),
         "-simplify",
-        "3%",
+        "5%",
         "keep-shapes",
         "-o",
         "format=topojson",
@@ -877,3 +1220,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
