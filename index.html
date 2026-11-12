@@ -14,12 +14,104 @@
 </head>
 <body>
   <div id="app-container">
-    <!-- Brand / Title Badge (Top-left) -->
-    <a href="#" class="app-brand" title="Topografie Trainer v1">
-      <span class="app-brand-icon">🗺️</span>
-      <span class="app-brand-title">maps.meijssen.com</span>
-      <span class="app-brand-tag">v1</span>
-    </a>
+    <!-- Top-left controls: Settings toggle button & Brand badge -->
+    <div class="top-left-controls">
+      <button id="btn-settings-toggle" class="settings-toggle-btn" aria-label="Instellingen openen" aria-expanded="false" title="Instellingen (kaartstijl, inwoners, provincies, voortgang)">
+        <span class="settings-toggle-icon">⚙️</span>
+        <span class="settings-toggle-text">Instellingen</span>
+      </button>
+      <a href="#" class="app-brand" title="Topografie Trainer v1">
+        <span class="app-brand-icon">🗺️</span>
+        <span class="app-brand-title">maps.meijssen.com</span>
+        <span class="app-brand-tag">v1</span>
+      </a>
+    </div>
+
+    <!-- Settings Panel (Dropdown/Flyout from top-left) -->
+    <div id="settings-backdrop" class="settings-backdrop" hidden></div>
+    <div id="settings-panel" class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-heading" hidden>
+      <div class="settings-header">
+        <div class="settings-title-wrap">
+          <span class="settings-icon">⚙️</span>
+          <h2 id="settings-heading" class="settings-title">Instellingen</h2>
+        </div>
+        <button id="btn-settings-close" class="btn-icon-close" aria-label="Instellingen sluiten" title="Sluiten (Escape)">✕</button>
+      </div>
+
+      <div class="settings-content">
+        <!-- Kaartstijl Section -->
+        <section class="settings-section">
+          <div class="section-label">Kaartstijl (blinde kaart)</div>
+          <div class="segmented-control" role="radiogroup" aria-label="Kaartstijl selectie">
+            <button type="button" class="segment-btn active" data-style="normal" role="radio" aria-checked="true">
+              <span>🗺️</span> Normaal
+            </button>
+            <button type="button" class="segment-btn" data-style="satellite" role="radio" aria-checked="false">
+              <span>🛰️</span> Satelliet
+            </button>
+          </div>
+        </section>
+
+        <!-- Minimum Inwoners Section -->
+        <section class="settings-section">
+          <div class="section-header">
+            <span class="section-label">Minimum inwoners</span>
+            <span id="inhabitants-badge" class="section-badge">334 plaatsen</span>
+          </div>
+          <div class="preset-grid" role="radiogroup" aria-label="Minimum aantal inwoners">
+            <button type="button" class="preset-btn" data-inhabitants="50000" role="radio" aria-checked="false">
+              <span class="preset-title">&gt; 50.000</span>
+              <span class="preset-sub">Grote steden (55)</span>
+            </button>
+            <button type="button" class="preset-btn active" data-inhabitants="10000" role="radio" aria-checked="true">
+              <span class="preset-title">&gt; 10.000</span>
+              <span class="preset-sub">Standaard (334)</span>
+            </button>
+            <button type="button" class="preset-btn" data-inhabitants="2500" role="radio" aria-checked="false">
+              <span class="preset-title">&gt; 2.500</span>
+              <span class="preset-sub">Middelgroot (897)</span>
+            </button>
+            <button type="button" class="preset-btn" data-inhabitants="0" role="radio" aria-checked="false">
+              <span class="preset-title">&gt; 0</span>
+              <span class="preset-sub">Alle plaatsen (2.503)</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- Provincie Filter Section -->
+        <section class="settings-section">
+          <div class="section-header">
+            <span class="section-label">Provincies</span>
+            <div class="province-quick-actions">
+              <button type="button" id="btn-prov-all" class="link-btn">Heel Nederland</button>
+              <span class="link-sep">•</span>
+              <button type="button" id="btn-prov-clear" class="link-btn">Geen</button>
+            </div>
+          </div>
+          <div id="province-grid" class="province-grid" role="group" aria-label="Provincie selectie">
+            <!-- Dynamically populated 12 province checkboxes -->
+          </div>
+        </section>
+
+        <!-- Voortgang & LocalStorage Section -->
+        <section class="settings-section settings-section-progress">
+          <div class="section-label">Voortgang &amp; Opslag (localStorage)</div>
+          <div class="storage-stats-card">
+            <div class="stat-row">
+              <span class="stat-text">Beheerst in huidige filter:</span>
+              <span class="stat-num"><strong id="stats-current-mastered">0</strong> / <span id="stats-current-total">334</span> (<span id="stats-current-pct">0%</span>)</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-text">Totaal beheerst in heel Nederland:</span>
+              <span class="stat-num"><strong id="stats-total-mastered">0</strong> / 2.503</span>
+            </div>
+          </div>
+          <button type="button" id="btn-reset-progress" class="btn btn-warning-outline btn-block">
+            <span>🔄</span> Voortgang resetten...
+          </button>
+        </section>
+      </div>
+    </div>
 
     <!-- Kaartlaag schakelaar (Top-right) -->
     <div class="map-style-toggle" role="group" aria-label="Kaartstijl selectie">
@@ -83,18 +175,38 @@
     <!-- Fullscreen Leaflet Map Viewport -->
     <div id="map"></div>
 
+    <!-- Reset Progress Confirmation Modal -->
+    <div id="reset-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="reset-modal-title" hidden>
+      <div class="modal-card">
+        <div class="modal-icon">⚠️</div>
+        <h2 id="reset-modal-title" class="modal-title">Voortgang resetten?</h2>
+        <p class="modal-text">
+          Weet je zeker dat je alle beheerste woonplaatsen wilt wissen? Deze actie verwijdert je opgeslagen voortgang uit de browser (<code>localStorage</code>) en zet de teller weer op 0.
+        </p>
+        <div class="modal-actions">
+          <button id="btn-confirm-reset" class="btn btn-danger">Ja, reset voortgang</button>
+          <button id="btn-cancel-reset" class="btn btn-secondary">Annuleren</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Completion Celebration Modal -->
-    <div id="completion-modal" class="modal-overlay">
+    <div id="completion-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="completion-title" hidden>
       <div class="modal-card">
         <div class="modal-icon">🏆</div>
-        <h2 class="modal-title">Gefeliciteerd!</h2>
-        <p class="modal-text">
+        <h2 id="completion-title" class="modal-title">Gefeliciteerd!</h2>
+        <p id="completion-message" class="modal-text">
           Je hebt alle woonplaatsen in deze selectie <strong>Beheerst</strong>!
           Alle gokken vielen binnen de polygoon of binnen de 3 km tolerantiegrens.
         </p>
-        <button id="btn-restart" class="btn btn-primary">
-          Opnieuw spelen
-        </button>
+        <div class="modal-actions">
+          <button id="btn-restart" class="btn btn-primary">
+            Opnieuw spelen
+          </button>
+          <button id="btn-open-settings-from-modal" class="btn btn-secondary">
+            Filters wijzigen
+          </button>
+        </div>
       </div>
     </div>
   </div>
